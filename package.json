@@ -1,0 +1,56 @@
+{
+  "name": "git-pusher",
+  "version": "1.0.0",
+  "description": "Smart Git commit/push assistant with AI-generated commit messages",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"webpack --watch --mode development\" \"wait-on dist/renderer.js && electron . --inspect\"",
+    "build:renderer": "webpack --mode production",
+    "build": "npm run build:renderer && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "build": {
+    "appId": "com.gitpusher.app",
+    "productName": "Git Pusher",
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "dist/**/*",
+      "src/ipc/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    }
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@babel/preset-env": "^7.24.0",
+    "@babel/preset-react": "^7.23.3",
+    "autoprefixer": "^10.4.18",
+    "babel-loader": "^9.1.3",
+    "concurrently": "^8.2.2",
+    "css-loader": "^6.10.0",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3",
+    "postcss": "^8.4.35",
+    "postcss-loader": "^8.1.1",
+    "style-loader": "^3.3.4",
+    "tailwindcss": "^3.4.1",
+    "wait-on": "^7.2.0",
+    "webpack": "^5.90.3",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "openai": "^4.28.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "simple-git": "^3.22.0",
+    "uuid": "^9.0.1"
+  }
+}
