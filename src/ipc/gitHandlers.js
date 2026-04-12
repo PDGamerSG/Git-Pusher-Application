@@ -11,7 +11,7 @@ function sendToRenderer(data) {
 
 function runGitCommand(repoPath, args) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('git', args, { cwd: repoPath, shell: true });
+    const proc = spawn('git', args, { cwd: repoPath });
     let output = '';
 
     proc.stdout.on('data', (chunk) => {
@@ -38,6 +38,12 @@ function runGitCommand(repoPath, args) {
       reject(err);
     });
   });
+}
+
+function isNoUpstreamBranchError(message) {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('no upstream branch') || normalized.includes('--set-upstream');
 }
 
 function registerGitHandlers(ipcMain) {
@@ -76,14 +82,44 @@ function registerGitHandlers(ipcMain) {
 
   ipcMain.handle('run-push', async (_event, { repoPath, commitMessage }) => {
     try {
+      const git = simpleGit(repoPath);
+      const initialStatus = await git.status();
+      if (initialStatus.files.length === 0) {
+        const message = 'No changes detected. Nothing to commit or push.';
+        sendToRenderer(`\n✗ ${message}\n`);
+        return { success: false, error: message };
+      }
+
+      const normalizedCommitMessage = (commitMessage || '').trim();
+      if (!normalizedCommitMessage) {
+        const message = 'Commit message is empty.';
+        sendToRenderer(`\n✗ ${message}\n`);
+        return { success: false, error: message };
+      }
+
       sendToRenderer('\n$ git add .\n');
       await runGitCommand(repoPath, ['add', '.']);
 
-      sendToRenderer('\n$ git commit -m "' + commitMessage + '"\n');
-      await runGitCommand(repoPath, ['commit', '-m', commitMessage]);
+      sendToRenderer('\n$ git commit -m "' + normalizedCommitMessage + '"\n');
+      await runGitCommand(repoPath, ['commit', '-m', normalizedCommitMessage]);
 
       sendToRenderer('\n$ git push\n');
-      await runGitCommand(repoPath, ['push']);
+      try {
+        await runGitCommand(repoPath, ['push']);
+      } catch (err) {
+        if (!isNoUpstreamBranchError(err.message)) {
+          throw err;
+        }
+
+        const branchName = (await runGitCommand(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+        if (!branchName || branchName === 'HEAD') {
+          throw new Error('Cannot determine current branch for upstream setup.');
+        }
+
+        sendToRenderer('\nNo upstream branch found. Retrying with upstream setup...\n');
+        sendToRenderer(`\n$ git push --set-upstream origin ${branchName}\n`);
+        await runGitCommand(repoPath, ['push', '--set-upstream', 'origin', branchName]);
+      }
 
       sendToRenderer('\n✓ Push complete!\n');
       return { success: true, error: null };
