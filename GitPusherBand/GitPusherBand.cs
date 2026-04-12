@@ -1,6 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Security;
 using Microsoft.Win32;
 
 namespace GitPusherBand
@@ -15,7 +17,7 @@ namespace GitPusherBand
     [Guid(ClassId)]
     [ProgId(ProgIdValue)]
     [ClassInterface(ClassInterfaceType.None)]
-    public sealed class GitPusherBand : IDeskBand2, IObjectWithSite, IPersist, IPersistStream
+    public sealed class GitPusherBand : IDeskBand2, IDeskBand, IDockingWindow, IOleWindow, IObjectWithSite, IPersist, IPersistStream
     {
         public const string ProgIdValue = "GitPusherBand.TaskbarBand";
         public const string ClassId = "A47D7A2A-1F8D-4C79-8DD9-4D9724E4C8F0";
@@ -39,15 +41,10 @@ namespace GitPusherBand
             {
             }
 
-            using (var toolbar = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Internet Explorer\Toolbar"))
-            {
-                toolbar?.SetValue(clsid, BandTitle, RegistryValueKind.String);
-            }
-
-            using (var shellBrowser = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Internet Explorer\Toolbar\ShellBrowser"))
-            {
-                shellBrowser?.SetValue(clsid, BandTitle, RegistryValueKind.String);
-            }
+            TrySetToolbarValue(Registry.CurrentUser, @"Software\Microsoft\Internet Explorer\Toolbar", clsid);
+            TrySetToolbarValue(Registry.CurrentUser, @"Software\Microsoft\Internet Explorer\Toolbar\ShellBrowser", clsid);
+            TrySetToolbarValue(Registry.LocalMachine, @"Software\Microsoft\Internet Explorer\Toolbar", clsid);
+            TrySetToolbarValue(Registry.LocalMachine, @"Software\Microsoft\Internet Explorer\Toolbar\ShellBrowser", clsid);
         }
 
         [ComUnregisterFunction]
@@ -57,15 +54,10 @@ namespace GitPusherBand
 
             Registry.ClassesRoot.DeleteSubKeyTree($@"CLSID\{clsid}\Implemented Categories\{DeskBandCategory}", false);
 
-            using (var toolbar = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Internet Explorer\Toolbar"))
-            {
-                toolbar?.DeleteValue(clsid, false);
-            }
-
-            using (var shellBrowser = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Internet Explorer\Toolbar\ShellBrowser"))
-            {
-                shellBrowser?.DeleteValue(clsid, false);
-            }
+            TryDeleteToolbarValue(Registry.CurrentUser, @"Software\Microsoft\Internet Explorer\Toolbar", clsid);
+            TryDeleteToolbarValue(Registry.CurrentUser, @"Software\Microsoft\Internet Explorer\Toolbar\ShellBrowser", clsid);
+            TryDeleteToolbarValue(Registry.LocalMachine, @"Software\Microsoft\Internet Explorer\Toolbar", clsid);
+            TryDeleteToolbarValue(Registry.LocalMachine, @"Software\Microsoft\Internet Explorer\Toolbar\ShellBrowser", clsid);
         }
 
         public int GetWindow(out IntPtr phwnd)
@@ -141,7 +133,7 @@ namespace GitPusherBand
 
             if ((pdbi.dwMask & (uint)DBIM.MODEFLAGS) != 0)
             {
-                pdbi.dwModeFlags = DBIMF.NOGRIPPER | DBIMF.NOMARGINS;
+                pdbi.dwModeFlags = DBIMF.VARIABLEHEIGHT | DBIMF.NOGRIPPER | DBIMF.NOMARGINS;
             }
 
             if ((pdbi.dwMask & (uint)DBIM.BKGNDCOLOR) != 0)
@@ -268,6 +260,44 @@ namespace GitPusherBand
             }
 
             _bandControl = null;
+        }
+
+        private static void TrySetToolbarValue(RegistryKey root, string subKeyPath, string clsid)
+        {
+            try
+            {
+                using (var key = root.CreateSubKey(subKeyPath))
+                {
+                    key?.SetValue(clsid, BandTitle, RegistryValueKind.String);
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Debug.WriteLine($"GitPusherBand: no registry permission for {root.Name}\\{subKeyPath}");
+            }
+            catch (SecurityException)
+            {
+                Debug.WriteLine($"GitPusherBand: security policy blocked registry write to {root.Name}\\{subKeyPath}");
+            }
+        }
+
+        private static void TryDeleteToolbarValue(RegistryKey root, string subKeyPath, string clsid)
+        {
+            try
+            {
+                using (var key = root.CreateSubKey(subKeyPath))
+                {
+                    key?.DeleteValue(clsid, false);
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Debug.WriteLine($"GitPusherBand: no registry permission for {root.Name}\\{subKeyPath}");
+            }
+            catch (SecurityException)
+            {
+                Debug.WriteLine($"GitPusherBand: security policy blocked registry delete in {root.Name}\\{subKeyPath}");
+            }
         }
     }
 }

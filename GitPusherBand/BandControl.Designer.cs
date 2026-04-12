@@ -58,7 +58,7 @@ namespace GitPusherBand
             this.projectNameLabel.Name = "projectNameLabel";
             this.projectNameLabel.Size = new System.Drawing.Size(150, 18);
             this.projectNameLabel.TabIndex = 1;
-            this.projectNameLabel.Text = "No projects";
+            this.projectNameLabel.Text = "No projects \u25BE";
             this.projectNameLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.projectNameLabel.Click += new System.EventHandler(this.ProjectNameLabel_Click);
             // 

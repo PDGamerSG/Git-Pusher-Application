@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Net.Http;
@@ -109,9 +110,9 @@ namespace GitPusherBand
                 return;
             }
 
-            if (!_projectStore.TryLoad(out var state, out var loadError))
+            if (!_projectStore.TryLoad(out var state, out _))
             {
-                FlashError(string.IsNullOrWhiteSpace(loadError) ? "projects.json error" : "projects.json error");
+                FlashError("projects.json error");
                 return;
             }
 
@@ -169,22 +170,25 @@ namespace GitPusherBand
                     return "push timeout";
                 }
 
-                if (response.IsSuccessStatusCode)
+                using (response)
                 {
-                    return null;
-                }
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return null;
+                    }
 
-                var responseBody = await response.Content.ReadAsStringAsync();
-                return ParseErrorText(responseBody);
+                    var responseBody = await response.Content.ReadAsStringAsync();
+                    return ParseErrorText(responseBody);
+                }
             }
         }
 
         private void LoadProjectsFromStore()
         {
-            if (!_projectStore.TryLoad(out var state, out var error))
+            if (!_projectStore.TryLoad(out var state, out _))
             {
                 _currentState = new ProjectsState();
-                projectNameLabel.Text = "projects.json error";
+                projectNameLabel.Text = "projects.json error \u25BE";
                 projectContextMenu.Items.Clear();
                 return;
             }
@@ -199,7 +203,7 @@ namespace GitPusherBand
             var activeProject = _projectStore.GetActiveProject(_currentState);
             if (activeProject == null)
             {
-                projectNameLabel.Text = "No projects";
+                projectNameLabel.Text = "No projects \u25BE";
                 return;
             }
 
@@ -321,10 +325,12 @@ namespace GitPusherBand
             }
             catch (IOException)
             {
+                Debug.WriteLine($"GitPusherBand: unable to create watcher directory at {directory}.");
                 return;
             }
             catch (UnauthorizedAccessException)
             {
+                Debug.WriteLine($"GitPusherBand: no permission to access watcher directory at {directory}.");
                 return;
             }
 
@@ -416,6 +422,7 @@ namespace GitPusherBand
             }
             catch (JsonException)
             {
+                Debug.WriteLine("GitPusherBand: failed to parse error JSON from Electron push endpoint.");
             }
 
             return LimitStatusText(responseBody);
