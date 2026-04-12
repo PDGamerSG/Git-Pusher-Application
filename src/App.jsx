@@ -30,6 +30,7 @@ export default function App() {
   const [recentCommits, setRecentCommits] = useState([]);
   const [pushHistory, setPushHistory] = useState(() => loadFromStorage('pushHistory', {}));
   const [pendingFolderPath, setPendingFolderPath] = useState(null);
+  const [apiStatus, setApiStatus] = useState(() => loadFromStorage('apiStatus', 'unknown')); // 'unknown' | 'valid' | 'invalid'
 
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
 
@@ -38,6 +39,7 @@ export default function App() {
   useEffect(() => { saveToStorage('activeProjectId', activeProjectId); }, [activeProjectId]);
   useEffect(() => { saveToStorage('grokApiKey', grokApiKey); }, [grokApiKey]);
   useEffect(() => { saveToStorage('pushHistory', pushHistory); }, [pushHistory]);
+  useEffect(() => { saveToStorage('apiStatus', apiStatus); }, [apiStatus]);
 
   // Listen for terminal output from main process
   useEffect(() => {
@@ -193,6 +195,7 @@ export default function App() {
         onSettingsOpen={() => setSettingsOpen(true)}
         pushHistory={pushHistory}
         isPushing={isPushing}
+        apiStatus={apiStatus}
       />
 
       {/* Right: main content */}
@@ -230,7 +233,12 @@ export default function App() {
       {settingsOpen && (
         <SettingsModal
           apiKey={grokApiKey}
-          onSave={(key) => { setGrokApiKey(key); setSettingsOpen(false); }}
+          apiStatus={apiStatus}
+          onSave={(key, isValid) => {
+            setGrokApiKey(key);
+            setApiStatus(isValid ? 'valid' : (key ? 'invalid' : 'unknown'));
+            setSettingsOpen(false);
+          }}
           onClose={() => setSettingsOpen(false)}
         />
       )}
