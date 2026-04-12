@@ -2,3 +2,9 @@ node_modules/
 dist/renderer.js
 release/
 *.log
+GitPusherBand\bin\
+GitPusherBand\obj\
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
