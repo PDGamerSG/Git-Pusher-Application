@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 function detectProviderLocal(key) {
   if (!key) return null;
@@ -8,10 +8,12 @@ function detectProviderLocal(key) {
   return { name: 'Unknown', color: 'text-neutral-400' };
 }
 
-export default function SettingsModal({ apiKey, apiStatus, onSave, onClose }) {
+export default function SettingsModal({ apiKey, apiStatus, onSave, onClose, onInstallTaskbarBand }) {
   const [key, setKey] = useState(apiKey);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [installingBand, setInstallingBand] = useState(false);
+  const [bandResult, setBandResult] = useState(null);
 
   const detected = detectProviderLocal(key.trim());
 
@@ -31,6 +33,20 @@ export default function SettingsModal({ apiKey, apiStatus, onSave, onClose }) {
 
   const handleSave = () => {
     onSave(key.trim(), testResult?.success || false);
+  };
+
+  const handleInstallBand = async () => {
+    if (!onInstallTaskbarBand || installingBand) return;
+    setInstallingBand(true);
+    setBandResult(null);
+    try {
+      const result = await onInstallTaskbarBand();
+      setBandResult(result || { success: false, error: 'Failed to add taskbar band.' });
+    } catch (err) {
+      setBandResult({ success: false, error: err?.message || 'Failed to add taskbar band.' });
+    } finally {
+      setInstallingBand(false);
+    }
   };
 
   return (
@@ -123,6 +139,44 @@ export default function SettingsModal({ apiKey, apiStatus, onSave, onClose }) {
           <p className="text-[10px] text-neutral-600 mt-3">
             Supports <span className="text-neutral-400">Groq</span> (gsk_...), <span className="text-neutral-400">Grok/xAI</span> (xai-...), and <span className="text-neutral-400">OpenAI</span> (sk-...). Auto-detects provider from key prefix.
           </p>
+
+          <div className="mt-4 pt-4 border-t border-neutral-800">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] text-neutral-300 font-semibold">Taskbar Band</p>
+                <p className="text-[10px] text-neutral-600 mt-0.5">
+                  Adds the GitPusherBand taskbar window and syncs projects.
+                </p>
+              </div>
+              <button
+                onClick={handleInstallBand}
+                disabled={installingBand || !onInstallTaskbarBand}
+                className="px-3 py-1.5 text-xs font-medium rounded border transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed border-neutral-600 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+              >
+                {installingBand ? 'Adding...' : 'Add to taskbar'}
+              </button>
+            </div>
+
+            {bandResult && (
+              <div className={`mt-3 px-3 py-2 rounded text-xs ${
+                bandResult.success
+                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+                  : 'bg-red-500/10 border border-red-500/20 text-red-300'
+              }`}>
+                <div className="font-medium">
+                  {bandResult.success ? (bandResult.message || 'Taskbar band added.') : (bandResult.error || 'Failed to add taskbar band.')}
+                </div>
+                {bandResult.warning && (
+                  <div className={`mt-1 text-[10px] ${bandResult.success ? 'text-amber-300/90' : 'text-red-300/80'} break-all`}>
+                    {bandResult.warning}
+                  </div>
+                )}
+                {bandResult.details && (
+                  <div className="mt-1 text-[10px] text-red-300/80 break-all">{bandResult.details}</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}

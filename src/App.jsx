@@ -40,6 +40,16 @@ export default function App() {
   useEffect(() => { saveToStorage('grokApiKey', grokApiKey); }, [grokApiKey]);
   useEffect(() => { saveToStorage('pushHistory', pushHistory); }, [pushHistory]);
   useEffect(() => { saveToStorage('apiStatus', apiStatus); }, [apiStatus]);
+  useEffect(() => {
+    if (!window.electronAPI?.syncBandData) return;
+    window.electronAPI.syncBandData({
+      projects,
+      activeProjectId,
+      grokApiKey
+    }).catch((err) => {
+      console.error('Failed to sync taskbar band state:', err);
+    });
+  }, [projects, activeProjectId, grokApiKey]);
 
   // Listen for terminal output from main process
   useEffect(() => {
@@ -183,6 +193,18 @@ export default function App() {
     }
   };
 
+  const handleInstallTaskbarBand = async () => {
+    if (!window.electronAPI?.installTaskbarBand) {
+      return { success: false, error: 'Taskbar integration is unavailable.' };
+    }
+
+    return window.electronAPI.installTaskbarBand({
+      projects,
+      activeProjectId,
+      grokApiKey
+    });
+  };
+
   return (
     <div className="h-screen flex bg-[#0a0a0a] text-white overflow-hidden">
       {/* Left sidebar */}
@@ -234,6 +256,7 @@ export default function App() {
         <SettingsModal
           apiKey={grokApiKey}
           apiStatus={apiStatus}
+          onInstallTaskbarBand={handleInstallTaskbarBand}
           onSave={(key, isValid) => {
             setGrokApiKey(key);
             setApiStatus(isValid ? 'valid' : (key ? 'invalid' : 'unknown'));
