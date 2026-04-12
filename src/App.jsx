@@ -143,9 +143,6 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0a] text-white overflow-hidden">
-      {/* Title bar drag region */}
-      <div className="drag-region h-[38px] flex-shrink-0" />
-
       {/* Tab bar */}
       <TabBar
         projects={projects}
