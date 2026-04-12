@@ -52,16 +52,149 @@ function resolveRegAsmPath() {
   return fs.existsSync(regAsmPath) ? regAsmPath : null;
 }
 
-function resolveDeskBandDllPath() {
-  const candidates = [
+function getDeskBandDllCandidates() {
+  return [
     path.join(__dirname, 'GitPusherBand', 'bin', 'x64', 'Release', 'net48', 'GitPusherBand.dll'),
     path.join(__dirname, 'GitPusherBand', 'bin', 'x64', 'Debug', 'net48', 'GitPusherBand.dll'),
+    path.join(__dirname, 'GitPusherBand', 'bin', 'Release', 'net48', 'GitPusherBand.dll'),
+    path.join(__dirname, 'GitPusherBand', 'bin', 'Debug', 'net48', 'GitPusherBand.dll'),
     path.join(__dirname, 'GitPusherBand', 'bin', 'x64', 'Release', 'GitPusherBand.dll'),
     path.join(__dirname, 'GitPusherBand', 'bin', 'x64', 'Debug', 'GitPusherBand.dll'),
+    path.join(__dirname, 'GitPusherBand', 'bin', 'Release', 'GitPusherBand.dll'),
+    path.join(__dirname, 'GitPusherBand', 'bin', 'Debug', 'GitPusherBand.dll'),
     path.join(__dirname, 'GitPusherBand', 'GitPusherBand.dll')
+  ];
+}
+
+function resolveDeskBandDllPath() {
+  return getDeskBandDllCandidates().find((candidatePath) => fs.existsSync(candidatePath)) || null;
+}
+
+function resolveMsBuildPathFromKnownLocations() {
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+
+  const candidates = [
+    path.join(programFiles, 'Microsoft Visual Studio', '2022', 'BuildTools', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFiles, 'Microsoft Visual Studio', '2022', 'Community', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFiles, 'Microsoft Visual Studio', '2022', 'Professional', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFiles, 'Microsoft Visual Studio', '2022', 'Enterprise', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFilesX86, 'Microsoft Visual Studio', '2022', 'BuildTools', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFilesX86, 'Microsoft Visual Studio', '2022', 'Community', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFilesX86, 'Microsoft Visual Studio', '2022', 'Professional', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFilesX86, 'Microsoft Visual Studio', '2022', 'Enterprise', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFilesX86, 'Microsoft Visual Studio', '2019', 'BuildTools', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFilesX86, 'Microsoft Visual Studio', '2019', 'Community', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFilesX86, 'Microsoft Visual Studio', '2019', 'Professional', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe'),
+    path.join(programFilesX86, 'Microsoft Visual Studio', '2019', 'Enterprise', 'MSBuild', 'Current', 'Bin', 'MSBuild.exe')
   ];
 
   return candidates.find((candidatePath) => fs.existsSync(candidatePath)) || null;
+}
+
+function resolveVsWherePath() {
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  const candidates = [
+    path.join(programFilesX86, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe'),
+    path.join(programFiles, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
+  ];
+  return candidates.find((candidatePath) => fs.existsSync(candidatePath)) || null;
+}
+
+async function resolveMsBuildPath() {
+  const knownPath = resolveMsBuildPathFromKnownLocations();
+  if (knownPath) {
+    return knownPath;
+  }
+
+  const vsWherePath = resolveVsWherePath();
+  if (vsWherePath) {
+    try {
+      const { stdout } = await runExecFile(vsWherePath, [
+        '-latest',
+        '-products',
+        '*',
+        '-requires',
+        'Microsoft.Component.MSBuild',
+        '-find',
+        'MSBuild\\**\\Bin\\MSBuild.exe'
+      ]);
+
+      const fromVsWhere = (stdout || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line && fs.existsSync(line));
+
+      if (fromVsWhere) {
+        return fromVsWhere;
+      }
+    } catch {
+      // fallback to PATH lookup below
+    }
+  }
+
+  try {
+    const { stdout } = await runExecFile('where', ['msbuild']);
+    const fromPath = (stdout || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && fs.existsSync(line));
+    return fromPath || null;
+  } catch {
+    return null;
+  }
+}
+
+async function tryBuildDeskBandDll() {
+  const projectPath = path.join(__dirname, 'GitPusherBand', 'GitPusherBand.csproj');
+  if (!fs.existsSync(projectPath)) {
+    return { success: false, error: `Project file not found: ${projectPath}` };
+  }
+
+  const msBuildPath = await resolveMsBuildPath();
+  const errors = [];
+
+  if (!msBuildPath) {
+    errors.push('MSBuild.exe not found in Visual Studio installation or PATH.');
+  } else {
+    try {
+      await runExecFile(msBuildPath, [
+        projectPath,
+        '/restore',
+        '/t:Build',
+        '/p:Configuration=Release',
+        '/p:Platform=x64',
+        '/p:TargetFramework=net48',
+        '/nologo',
+        '/verbosity:minimal'
+      ]);
+      return { success: true };
+    } catch (error) {
+      errors.push(`MSBuild failed: ${error?.message || 'Unknown error.'}`);
+    }
+  }
+
+  try {
+    await runExecFile('dotnet', [
+      'build',
+      projectPath,
+      '-c',
+      'Release',
+      '-p:Platform=x64',
+      '-p:TargetFramework=net48',
+      '-v',
+      'minimal'
+    ]);
+    return { success: true };
+  } catch (error) {
+    errors.push(`dotnet build failed: ${error?.message || 'Unknown error.'}`);
+  }
+
+  return {
+    success: false,
+    error: `${errors.join(' ')} Install Visual Studio Build Tools with MSBuild and the .NET Framework 4.8 targeting pack.`
+  };
 }
 
 function runExecFile(command, args) {
@@ -78,13 +211,65 @@ function runExecFile(command, args) {
   });
 }
 
-function isWindows11OrLater() {
-  if (process.platform !== 'win32') return false;
-
+function getWindowsVersionInfo() {
   const versionParts = os.release().split('.').map((part) => Number(part));
   const major = versionParts[0] || 0;
   const build = versionParts[2] || 0;
-  return major >= 10 && build >= 22000;
+
+  return {
+    major,
+    build,
+    isWindows11OrLater: major >= 10 && build >= 22000
+  };
+}
+
+async function detectTaskbarMode() {
+  if (process.platform !== 'win32') {
+    return { mode: 'unsupported' };
+  }
+
+  const versionInfo = getWindowsVersionInfo();
+  if (!versionInfo.isWindows11OrLater) {
+    return { mode: 'classic', source: 'os-version' };
+  }
+
+  // TrafficMonitor-style probe: modern Win11 taskbar contains this child class.
+  const script = [
+    '$signature = \'using System; using System.Runtime.InteropServices; public static class GitPusherTaskbarProbe { [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern System.IntPtr FindWindow(string lpClassName, string lpWindowName); [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern System.IntPtr FindWindowEx(System.IntPtr hWndParent, System.IntPtr hWndChildAfter, string lpszClass, string lpszWindow); }\'',
+    'Add-Type -TypeDefinition $signature -Language CSharp -ErrorAction SilentlyContinue | Out-Null',
+    '$taskbar = [GitPusherTaskbarProbe]::FindWindow("Shell_TrayWnd", $null)',
+    'if ($taskbar -eq [System.IntPtr]::Zero) { Write-Output "unknown"; exit 0 }',
+    '$bridge = [GitPusherTaskbarProbe]::FindWindowEx($taskbar, [System.IntPtr]::Zero, "Windows.UI.Composition.DesktopWindowContentBridge", $null)',
+    'if ($bridge -eq [System.IntPtr]::Zero) { Write-Output "classic" } else { Write-Output "windows11" }'
+  ].join('; ');
+
+  try {
+    const { stdout } = await runExecFile('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      script
+    ]);
+
+    const mode = (stdout || '').trim().toLowerCase();
+    if (mode === 'classic' || mode === 'windows11') {
+      return { mode, source: 'shell-probe' };
+    }
+
+    return {
+      mode: 'unknown',
+      source: 'shell-probe',
+      details: `Unexpected taskbar probe output: ${mode || '<empty>'}`
+    };
+  } catch (error) {
+    return {
+      mode: 'unknown',
+      source: 'shell-probe',
+      details: error?.message || 'Taskbar probe failed.'
+    };
+  }
 }
 
 async function ensureToolbarRegistryEntries() {
@@ -123,11 +308,17 @@ async function installTaskbarBand(payload = {}) {
     return { success: false, error: 'Taskbar desk band is only supported on Windows.' };
   }
 
-  if (isWindows11OrLater()) {
+  const taskbarMode = await detectTaskbarMode();
+  if (taskbarMode.mode === 'windows11') {
     return {
       success: false,
-      error: 'Windows 11 taskbar does not support classic Desk Band toolbars, so this cannot be shown there.'
+      error: 'Detected the modern Windows 11 taskbar. This desk band works only when a classic Windows 10-style taskbar is active.'
     };
+  }
+
+  const preflightWarnings = [];
+  if (taskbarMode.mode === 'unknown' && taskbarMode.details) {
+    preflightWarnings.push(`Could not verify taskbar mode automatically: ${taskbarMode.details}`);
   }
 
   const storePath = await writeBandSharedState(payload);
@@ -139,16 +330,32 @@ async function installTaskbarBand(payload = {}) {
     };
   }
 
-  const deskBandDllPath = resolveDeskBandDllPath();
+  let deskBandDllPath = resolveDeskBandDllPath();
   if (!deskBandDllPath) {
-    return {
-      success: false,
-      error: 'GitPusherBand.dll not found. Build GitPusherBand.sln (x64) first.'
-    };
+    const buildResult = await tryBuildDeskBandDll();
+    if (!buildResult.success) {
+      return {
+        success: false,
+        error: `GitPusherBand.dll not found, and automatic build failed: ${buildResult.error}`,
+        details: buildResult.error
+      };
+    }
+
+    deskBandDllPath = resolveDeskBandDllPath();
+    if (!deskBandDllPath) {
+      const searchedPaths = getDeskBandDllCandidates().join(' | ');
+      return {
+        success: false,
+        error: 'GitPusherBand.dll is still missing after build.',
+        details: `Build completed, but DLL was not found in expected paths: ${searchedPaths}`
+      };
+    }
+
+    preflightWarnings.push('GitPusherBand.dll was built automatically before registration.');
   }
 
   try {
-    const warnings = [];
+    const warnings = [...preflightWarnings];
 
     await runExecFile(regAsmPath, [deskBandDllPath, '/codebase']);
     try {
