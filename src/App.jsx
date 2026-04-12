@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import TabBar from './components/TabBar';
+import Sidebar from './components/Sidebar';
 import RepoPanel from './components/RepoPanel';
 import TerminalLog from './components/TerminalLog';
 import BottomBar from './components/BottomBar';
 import SettingsModal from './components/SettingsModal';
-
-const Store = window.electronAPI ? null : null;
+import NamePrompt from './components/NamePrompt';
 
 function loadFromStorage(key, fallback) {
   try {
@@ -29,6 +28,8 @@ export default function App() {
   const [isPushing, setIsPushing] = useState(false);
   const [repoStatus, setRepoStatus] = useState(null);
   const [recentCommits, setRecentCommits] = useState([]);
+  const [pushHistory, setPushHistory] = useState(() => loadFromStorage('pushHistory', {}));
+  const [pendingFolderPath, setPendingFolderPath] = useState(null);
 
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
 
@@ -36,6 +37,7 @@ export default function App() {
   useEffect(() => { saveToStorage('projects', projects); }, [projects]);
   useEffect(() => { saveToStorage('activeProjectId', activeProjectId); }, [activeProjectId]);
   useEffect(() => { saveToStorage('grokApiKey', grokApiKey); }, [grokApiKey]);
+  useEffect(() => { saveToStorage('pushHistory', pushHistory); }, [pushHistory]);
 
   // Listen for terminal output from main process
   useEffect(() => {
@@ -59,21 +61,50 @@ export default function App() {
     refreshStatus();
   }, [refreshStatus]);
 
+  // Add a push activity entry for a project
+  const addActivity = (projectId, message, status) => {
+    setPushHistory(prev => {
+      const existing = prev[projectId] || [];
+      const entry = {
+        id: crypto.randomUUID(),
+        message,
+        status,
+        time: new Date().toISOString()
+      };
+      // Keep last 8 activities per project
+      const updated = [entry, ...existing].slice(0, 8);
+      return { ...prev, [projectId]: updated };
+    });
+  };
+
+  // Update the most recent activity's status
+  const updateLatestActivity = (projectId, status) => {
+    setPushHistory(prev => {
+      const existing = prev[projectId] || [];
+      if (existing.length === 0) return prev;
+      const updated = [...existing];
+      updated[0] = { ...updated[0], status, time: new Date().toISOString() };
+      return { ...prev, [projectId]: updated };
+    });
+  };
+
   const handleAddRepo = async () => {
     if (!window.electronAPI) return;
     const folderPath = await window.electronAPI.selectFolder();
     if (!folderPath) return;
+    // Open name prompt modal instead of window.prompt()
+    setPendingFolderPath(folderPath);
+  };
 
-    const name = prompt('Enter a short project name:');
-    if (!name) return;
-
+  const handleConfirmName = (name) => {
     const newProject = {
       id: crypto.randomUUID(),
-      name: name.trim(),
-      path: folderPath
+      name,
+      path: pendingFolderPath
     };
     setProjects(prev => [...prev, newProject]);
     setActiveProjectId(newProject.id);
+    setPendingFolderPath(null);
   };
 
   const handleRemoveProject = (id) => {
@@ -81,6 +112,12 @@ export default function App() {
     if (activeProjectId === id) {
       setActiveProjectId(projects.length > 1 ? projects.find(p => p.id !== id)?.id : null);
     }
+    // Clean up push history
+    setPushHistory(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   const handlePush = async (featureName) => {
@@ -89,23 +126,21 @@ export default function App() {
     setIsPushing(true);
     setTerminalLines([]);
 
+    // Add "working" activity
+    addActivity(activeProject.id, featureName, 'working');
+
     try {
       // 1. Get diff stat
       setTerminalLines(prev => [...prev, '$ git diff --stat\n']);
       const diffResult = await window.electronAPI.getRepoStatus(activeProject.path);
       if (diffResult.error) {
         setTerminalLines(prev => [...prev, `Error: ${diffResult.error}\n`]);
+        updateLatestActivity(activeProject.id, 'failed');
         setIsPushing(false);
         return;
       }
 
-      const diffStat = await window.electronAPI.generateCommit
-        ? (await (async () => {
-            const git = await window.electronAPI.getRepoStatus(activeProject.path);
-            return git.changedFiles.map(f => `${f.status} ${f.path}`).join('\n') || 'No changes';
-          })())
-        : 'No changes';
-
+      const diffStat = diffResult.changedFiles.map(f => `${f.status} ${f.path}`).join('\n') || 'No changes';
       setTerminalLines(prev => [...prev, diffStat + '\n']);
 
       // 2. Generate commit message via Grok
@@ -118,6 +153,7 @@ export default function App() {
 
       if (commitResult.error) {
         setTerminalLines(prev => [...prev, `Error: ${commitResult.error}\n`]);
+        updateLatestActivity(activeProject.id, 'failed');
         setIsPushing(false);
         return;
       }
@@ -132,29 +168,35 @@ export default function App() {
       });
 
       if (pushResult.success) {
+        updateLatestActivity(activeProject.id, 'completed');
         await refreshStatus();
+      } else {
+        updateLatestActivity(activeProject.id, 'failed');
       }
     } catch (err) {
       setTerminalLines(prev => [...prev, `\nUnexpected error: ${err.message}\n`]);
+      updateLatestActivity(activeProject.id, 'failed');
     } finally {
       setIsPushing(false);
     }
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0a0a0a] text-white overflow-hidden">
-      {/* Tab bar */}
-      <TabBar
+    <div className="h-screen flex bg-[#0a0a0a] text-white overflow-hidden">
+      {/* Left sidebar */}
+      <Sidebar
         projects={projects}
         activeProjectId={activeProjectId}
         onSelect={setActiveProjectId}
         onAdd={handleAddRepo}
         onRemove={handleRemoveProject}
         onSettingsOpen={() => setSettingsOpen(true)}
+        pushHistory={pushHistory}
+        isPushing={isPushing}
       />
 
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col min-h-0">
+      {/* Right: main content */}
+      <div className="flex-1 flex flex-col min-w-0">
         {activeProject ? (
           <>
             <RepoPanel
@@ -164,23 +206,25 @@ export default function App() {
               onRefresh={refreshStatus}
             />
             <TerminalLog lines={terminalLines} />
+            <BottomBar
+              onPush={handlePush}
+              disabled={!activeProject || isPushing}
+              isPushing={isPushing}
+            />
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-neutral-500">
             <div className="text-center">
-              <div className="text-4xl mb-3 opacity-30">⌥</div>
-              <p className="text-sm">Add a repo to get started</p>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mx-auto mb-4 text-neutral-700">
+                <path d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 11v4M10 13h4" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <p className="text-sm text-neutral-500 mb-1">No project selected</p>
+              <p className="text-xs text-neutral-600">Add a project from the sidebar to get started</p>
             </div>
           </div>
         )}
       </div>
-
-      {/* Bottom input bar */}
-      <BottomBar
-        onPush={handlePush}
-        disabled={!activeProject || isPushing}
-        isPushing={isPushing}
-      />
 
       {/* Settings modal */}
       {settingsOpen && (
@@ -188,6 +232,15 @@ export default function App() {
           apiKey={grokApiKey}
           onSave={(key) => { setGrokApiKey(key); setSettingsOpen(false); }}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {/* Name prompt modal */}
+      {pendingFolderPath && (
+        <NamePrompt
+          folderPath={pendingFolderPath}
+          onConfirm={handleConfirmName}
+          onCancel={() => setPendingFolderPath(null)}
         />
       )}
     </div>
