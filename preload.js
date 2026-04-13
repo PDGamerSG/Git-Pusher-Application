@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('terminal-output', handler);
     return () => ipcRenderer.removeListener('terminal-output', handler);
   },
+  onTaskbarPushStarted: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('taskbar-push-started', handler);
+    return () => ipcRenderer.removeListener('taskbar-push-started', handler);
+  },
   onTaskbarPushComplete: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('taskbar-push-complete', handler);

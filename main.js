@@ -535,6 +535,12 @@ app.whenReady().then(() => {
       });
     }
 
+    function notifyMain(event, data) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(event, data);
+      }
+    }
+
     try {
       // 1. Check for changes
       const git = simpleGit(repoPath);
@@ -542,6 +548,9 @@ app.whenReady().then(() => {
       if (status.files.length === 0) {
         return { success: false, error: 'No changes to push' };
       }
+
+      // Notify main window: push starting (working state)
+      notifyMain('taskbar-push-started', { repoPath, featureName });
 
       const diffStat = status.files.map(f => `${f.working_dir || f.index} ${f.path}`).join('\n');
 
@@ -584,11 +593,10 @@ app.whenReady().then(() => {
         }
       }
 
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('taskbar-push-complete', { repoPath });
-      }
+      notifyMain('taskbar-push-complete', { repoPath, featureName, commitMessage, success: true });
       return { success: true, error: null };
     } catch (err) {
+      notifyMain('taskbar-push-complete', { repoPath, featureName, success: false });
       return { success: false, error: err.message };
     }
   });
