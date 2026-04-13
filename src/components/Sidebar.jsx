@@ -206,7 +206,7 @@ export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, on
               onToggle={toggleExpand}
               onSelect={onSelect}
               onRemove={onRemove}
-              activity={pushHistory[project.id] || []}
+              activity={(pushHistory[project.id] || []).slice(0, 3)}
               isPushing={isPushing}
             />
           ))

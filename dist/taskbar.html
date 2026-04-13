@@ -216,6 +216,23 @@
     let state = { projects: [], activeProjectId: '', grokApiKey: '' };
     let isPushing = false;
     let feedbackTimeout = null;
+    let dropdownOpen = false;
+
+    function openDropdown() {
+      renderDropdown();
+      dropdown.classList.add('open');
+      if (!dropdownOpen) {
+        dropdownOpen = true;
+        window.taskbarAPI.resize(256);
+      }
+    }
+
+    function closeDropdown() {
+      if (!dropdownOpen) return;
+      dropdownOpen = false;
+      dropdown.classList.remove('open');
+      window.taskbarAPI.resize(48);
+    }
 
     function setStatus(status) {
       statusDot.className = 'status-dot ' + status;
@@ -238,7 +255,7 @@
         item.innerHTML = '<span class="check">' + (p.id === state.activeProjectId ? '✓' : '') + '</span>' + escapeHtml(p.name);
         item.addEventListener('click', async () => {
           await window.taskbarAPI.setActiveProject(p.id);
-          dropdown.classList.remove('open');
+          closeDropdown();
         });
         dropdown.appendChild(item);
       });
@@ -253,14 +270,11 @@
     // Toggle dropdown
     projectBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      renderDropdown();
-      dropdown.classList.toggle('open');
+      if (dropdownOpen) closeDropdown(); else openDropdown();
     });
 
     // Close dropdown on outside click
-    document.addEventListener('click', () => {
-      dropdown.classList.remove('open');
-    });
+    document.addEventListener('click', () => closeDropdown());
     dropdown.addEventListener('click', (e) => e.stopPropagation());
 
     // Push on Enter

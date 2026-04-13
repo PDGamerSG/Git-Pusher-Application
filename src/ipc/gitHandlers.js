@@ -67,7 +67,7 @@ function registerGitHandlers(ipcMain) {
   ipcMain.handle('get-recent-commits', async (_event, repoPath) => {
     try {
       const git = simpleGit(repoPath);
-      const log = await git.log({ maxCount: 3 });
+      const log = await git.log({ maxCount: 10 });
       return {
         commits: log.all.map(c => ({
           hash: c.hash.substring(0, 7),
