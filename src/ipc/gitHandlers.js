@@ -1,6 +1,8 @@
 const simpleGit = require('simple-git');
 const { spawn } = require('child_process');
 const { BrowserWindow } = require('electron');
+const fs = require('fs');
+const path = require('path');
 
 function sendToRenderer(data) {
   const wins = BrowserWindow.getAllWindows();
@@ -122,6 +124,89 @@ function registerGitHandlers(ipcMain) {
       }
 
       sendToRenderer('\n✓ Push complete!\n');
+      return { success: true, error: null };
+    } catch (err) {
+      sendToRenderer('\n✗ Error: ' + err.message + '\n');
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('check-git-init', async (_event, repoPath) => {
+    try {
+      const gitDir = path.join(repoPath, '.git');
+      const exists = fs.existsSync(gitDir);
+      if (!exists) {
+        return { initialized: false, hasRemote: false };
+      }
+      // Check if remote 'origin' exists
+      const git = simpleGit(repoPath);
+      const remotes = await git.getRemotes(true);
+      const hasOrigin = remotes.some(r => r.name === 'origin');
+      return { initialized: true, hasRemote: hasOrigin };
+    } catch (err) {
+      return { initialized: false, hasRemote: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('init-and-push', async (_event, { repoPath, remoteUrl }) => {
+    try {
+      const gitDir = path.join(repoPath, '.git');
+      const alreadyInit = fs.existsSync(gitDir);
+
+      // 1. git init (only if not already initialized)
+      if (!alreadyInit) {
+        sendToRenderer('$ git init\n');
+        await runGitCommand(repoPath, ['init']);
+      }
+
+      // 2. Check if origin already exists
+      const git = simpleGit(repoPath);
+      const remotes = await git.getRemotes(true);
+      const hasOrigin = remotes.some(r => r.name === 'origin');
+
+      if (hasOrigin) {
+        // Replace existing origin
+        sendToRenderer('\n$ git remote set-url origin ' + remoteUrl + '\n');
+        await runGitCommand(repoPath, ['remote', 'set-url', 'origin', remoteUrl]);
+      } else {
+        sendToRenderer('\n$ git remote add origin ' + remoteUrl + '\n');
+        await runGitCommand(repoPath, ['remote', 'add', 'origin', remoteUrl]);
+      }
+
+      // 3. Verify remote
+      sendToRenderer('\n$ git remote -v\n');
+      await runGitCommand(repoPath, ['remote', '-v']);
+
+      // 4. Stage all files
+      sendToRenderer('\n$ git add .\n');
+      await runGitCommand(repoPath, ['add', '.']);
+
+      // 5. Check if there's anything to commit
+      const status = await git.status();
+      if (status.files.length === 0) {
+        // Nothing staged — could be empty dir or everything already committed
+        const log = await git.log({ maxCount: 1 }).catch(() => null);
+        if (!log || log.total === 0) {
+          sendToRenderer('\n⚠ No files to commit. Add some files first.\n');
+          return { success: false, error: 'No files to commit. The folder may be empty.' };
+        }
+        // Already have commits, just push
+        sendToRenderer('\nNo new changes to commit. Pushing existing commits...\n');
+      } else {
+        // 6. Commit
+        sendToRenderer('\n$ git commit -m "Initial Commit"\n');
+        await runGitCommand(repoPath, ['commit', '-m', 'Initial Commit']);
+      }
+
+      // 7. Rename branch to main
+      sendToRenderer('\n$ git branch -M main\n');
+      await runGitCommand(repoPath, ['branch', '-M', 'main']);
+
+      // 8. Push
+      sendToRenderer('\n$ git push -u origin main\n');
+      await runGitCommand(repoPath, ['push', '-u', 'origin', 'main']);
+
+      sendToRenderer('\n✓ Repository initialized and pushed to remote!\n');
       return { success: true, error: null };
     } catch (err) {
       sendToRenderer('\n✗ Error: ' + err.message + '\n');

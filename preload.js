@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runPush: (data) => ipcRenderer.invoke('run-push', data),
   testApiKey: (apiKey) => ipcRenderer.invoke('test-api-key', apiKey),
   detectProvider: (apiKey) => ipcRenderer.invoke('detect-provider', apiKey),
+  checkGitInit: (repoPath) => ipcRenderer.invoke('check-git-init', repoPath),
+  initAndPush: (data) => ipcRenderer.invoke('init-and-push', data),
   syncBandData: (data) => ipcRenderer.invoke('sync-band-data', data),
   installTaskbarBand: (data) => ipcRenderer.invoke('install-taskbar-band', data),
   onTerminalOutput: (callback) => {

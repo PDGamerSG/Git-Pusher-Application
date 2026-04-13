@@ -5,6 +5,7 @@ import TerminalLog from './components/TerminalLog';
 import BottomBar from './components/BottomBar';
 import SettingsModal from './components/SettingsModal';
 import NamePrompt from './components/NamePrompt';
+import GitInitPanel from './components/GitInitPanel';
 
 function loadFromStorage(key, fallback) {
   try {
@@ -31,6 +32,8 @@ export default function App() {
   const [pushHistory, setPushHistory] = useState(() => loadFromStorage('pushHistory', {}));
   const [pendingFolderPath, setPendingFolderPath] = useState(null);
   const [apiStatus, setApiStatus] = useState(() => loadFromStorage('apiStatus', 'unknown')); // 'unknown' | 'valid' | 'invalid'
+  const [gitInitStatus, setGitInitStatus] = useState(null); // null | { initialized, hasRemote }
+  const [isInitializing, setIsInitializing] = useState(false);
 
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
 
@@ -69,9 +72,25 @@ export default function App() {
     setRecentCommits(commits.commits || []);
   }, [activeProject]);
 
+  // Check git init status when active project changes
+  const checkGitInit = useCallback(async () => {
+    if (!activeProject || !window.electronAPI?.checkGitInit) {
+      setGitInitStatus(null);
+      return;
+    }
+    const result = await window.electronAPI.checkGitInit(activeProject.path);
+    setGitInitStatus(result);
+  }, [activeProject]);
+
   useEffect(() => {
-    refreshStatus();
-  }, [refreshStatus]);
+    checkGitInit();
+  }, [checkGitInit]);
+
+  useEffect(() => {
+    if (gitInitStatus?.initialized && gitInitStatus?.hasRemote) {
+      refreshStatus();
+    }
+  }, [gitInitStatus, refreshStatus]);
 
   // Add a push activity entry for a project
   const addActivity = (projectId, message, status) => {
@@ -193,6 +212,35 @@ export default function App() {
     }
   };
 
+  const handleInitAndPush = async (remoteUrl) => {
+    if (!activeProject || !window.electronAPI?.initAndPush || isInitializing) return;
+
+    setIsInitializing(true);
+    setTerminalLines([]);
+
+    addActivity(activeProject.id, 'Initialize & Push', 'working');
+
+    try {
+      const result = await window.electronAPI.initAndPush({
+        repoPath: activeProject.path,
+        remoteUrl
+      });
+
+      if (result.success) {
+        updateLatestActivity(activeProject.id, 'completed');
+        // Re-check init status — will trigger refreshStatus via effect
+        await checkGitInit();
+      } else {
+        updateLatestActivity(activeProject.id, 'failed');
+      }
+    } catch (err) {
+      setTerminalLines(prev => [...prev, `\nUnexpected error: ${err.message}\n`]);
+      updateLatestActivity(activeProject.id, 'failed');
+    } finally {
+      setIsInitializing(false);
+    }
+  };
+
   const handleInstallTaskbarBand = async () => {
     if (!window.electronAPI?.installTaskbarBand) {
       return { success: false, error: 'Taskbar integration is unavailable.' };
@@ -223,20 +271,31 @@ export default function App() {
       {/* Right: main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {activeProject ? (
-          <>
-            <RepoPanel
-              project={activeProject}
-              status={repoStatus}
-              commits={recentCommits}
-              onRefresh={refreshStatus}
-            />
-            <TerminalLog lines={terminalLines} />
-            <BottomBar
-              onPush={handlePush}
-              disabled={!activeProject || isPushing}
-              isPushing={isPushing}
-            />
-          </>
+          gitInitStatus && (!gitInitStatus.initialized || !gitInitStatus.hasRemote) ? (
+            <>
+              <GitInitPanel
+                project={activeProject}
+                onInitComplete={handleInitAndPush}
+                isWorking={isInitializing}
+              />
+              <TerminalLog lines={terminalLines} />
+            </>
+          ) : (
+            <>
+              <RepoPanel
+                project={activeProject}
+                status={repoStatus}
+                commits={recentCommits}
+                onRefresh={refreshStatus}
+              />
+              <TerminalLog lines={terminalLines} />
+              <BottomBar
+                onPush={handlePush}
+                disabled={!activeProject || isPushing}
+                isPushing={isPushing}
+              />
+            </>
+          )
         ) : (
           <div className="flex-1 flex items-center justify-center text-neutral-500">
             <div className="text-center">
