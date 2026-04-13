@@ -129,12 +129,10 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, onSelect, onRe
   );
 }
 
-export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, onRemove, onSettingsOpen, pushHistory, isPushing, apiStatus }) {
+export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, onRemove, onSettingsOpen, pushHistory, isPushing, apiStatus, taskbarOpen, onToggleTaskbar, alwaysOnTop, onToggleAlwaysOnTop }) {
   const [expandedIds, setExpandedIds] = useState(() => {
-    // Expand the active project by default
     return activeProjectId ? new Set([activeProjectId]) : new Set();
   });
-  const [taskbarOpen, setTaskbarOpen] = useState(false);
 
   const toggleExpand = (id) => {
     setExpandedIds(prev => {
@@ -143,16 +141,6 @@ export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, on
       else next.add(id);
       return next;
     });
-  };
-
-  const handleToggleTaskbar = async () => {
-    if (!window.electronAPI?.toggleTaskbarWindow) return;
-    try {
-      const result = await window.electronAPI.toggleTaskbarWindow();
-      setTaskbarOpen(result?.visible || false);
-    } catch (err) {
-      console.error('Failed to toggle taskbar window:', err);
-    }
   };
 
   return (
@@ -227,7 +215,7 @@ export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, on
           </button>
 
           <button
-            onClick={handleToggleTaskbar}
+            onClick={onToggleTaskbar}
             className={`w-full flex items-center justify-center gap-2 px-3 py-2 text-[12px] rounded-md transition-colors ${
               taskbarOpen
                 ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15'
@@ -239,6 +227,24 @@ export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, on
               <path d="M8 20h8M12 16v4" />
             </svg>
             <span>{taskbarOpen ? 'Hide taskbar window' : 'Show taskbar window'}</span>
+          </button>
+
+          <button
+            onClick={onToggleAlwaysOnTop}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2 text-[12px] rounded-md transition-colors ${
+              alwaysOnTop
+                ? 'text-sky-400 bg-sky-500/10 hover:bg-sky-500/15'
+                : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
+            }`}
+            title={alwaysOnTop ? 'Window is pinned on top — click to unpin' : 'Pin window on top of all other windows'}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v10M12 2l-3 3M12 2l3 3" />
+              <path d="M5 12h14" />
+              <path d="M8 12v3a4 4 0 008 0v-3" />
+              <path d="M12 19v3" />
+            </svg>
+            <span>{alwaysOnTop ? 'Unpin from top' : 'Pin to top'}</span>
           </button>
         </div>
       </div>

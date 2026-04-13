@@ -436,6 +436,9 @@ function createTaskbarWindow() {
   });
 
   taskbarWindow.on('closed', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('taskbar-closed');
+    }
     taskbarWindow = null;
   });
 }
@@ -645,6 +648,12 @@ app.whenReady().then(() => {
       taskbarWindow.webContents.send('taskbar-state-update', taskbarState);
     }
     return { success: true };
+  });
+
+  ipcMain.handle('toggle-always-on-top', () => {
+    const current = mainWindow.isAlwaysOnTop();
+    mainWindow.setAlwaysOnTop(!current, 'screen-saver');
+    return { alwaysOnTop: !current };
   });
 
   // Register git and grok IPC handlers

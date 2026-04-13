@@ -34,6 +34,8 @@ export default function App() {
   const [apiStatus, setApiStatus] = useState(() => loadFromStorage('apiStatus', 'unknown')); // 'unknown' | 'valid' | 'invalid'
   const [gitInitStatus, setGitInitStatus] = useState(null); // null | { initialized, hasRemote }
   const [isInitializing, setIsInitializing] = useState(false);
+  const [taskbarOpen, setTaskbarOpen] = useState(false);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
 
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
 
@@ -71,6 +73,14 @@ export default function App() {
       setActiveProjectId(projectId);
     });
     return cleanup;
+  }, []);
+
+  // Listen for taskbar window being closed (via its X button)
+  useEffect(() => {
+    if (!window.electronAPI?.onTaskbarClosed) return;
+    return window.electronAPI.onTaskbarClosed(() => {
+      setTaskbarOpen(false);
+    });
   }, []);
 
   // Always-fresh ref so the taskbar push handler never has stale state
@@ -117,8 +127,8 @@ export default function App() {
           return { ...prev, [proj.id]: updated };
         });
       }
-      if (success && activeProject?.path === repoPath) {
-        refreshStatus();
+      if (success) {
+        stateRef.current.refreshStatus();
       }
     });
   }, []);
@@ -310,6 +320,18 @@ export default function App() {
     }
   };
 
+  const handleToggleTaskbar = async () => {
+    if (!window.electronAPI?.toggleTaskbarWindow) return;
+    const result = await window.electronAPI.toggleTaskbarWindow();
+    setTaskbarOpen(result?.visible || false);
+  };
+
+  const handleToggleAlwaysOnTop = async () => {
+    if (!window.electronAPI?.toggleAlwaysOnTop) return;
+    const result = await window.electronAPI.toggleAlwaysOnTop();
+    setAlwaysOnTop(result?.alwaysOnTop || false);
+  };
+
   const handleInstallTaskbarBand = async () => {
     if (!window.electronAPI?.installTaskbarBand) {
       return { success: false, error: 'Taskbar integration is unavailable.' };
@@ -335,6 +357,10 @@ export default function App() {
         pushHistory={pushHistory}
         isPushing={isPushing}
         apiStatus={apiStatus}
+        taskbarOpen={taskbarOpen}
+        onToggleTaskbar={handleToggleTaskbar}
+        alwaysOnTop={alwaysOnTop}
+        onToggleAlwaysOnTop={handleToggleAlwaysOnTop}
       />
 
       {/* Right: main content */}

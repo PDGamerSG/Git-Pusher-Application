@@ -33,5 +33,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('taskbar-push-complete', handler);
     return () => ipcRenderer.removeListener('taskbar-push-complete', handler);
-  }
+  },
+  onTaskbarClosed: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('taskbar-closed', handler);
+    return () => ipcRenderer.removeListener('taskbar-closed', handler);
+  },
+  toggleAlwaysOnTop: () => ipcRenderer.invoke('toggle-always-on-top')
 });
