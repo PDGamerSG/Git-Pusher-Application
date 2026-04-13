@@ -595,6 +595,15 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.on('taskbar-resize', (_event, height) => {
+    if (!taskbarWindow || taskbarWindow.isDestroyed()) return;
+    const [w] = taskbarWindow.getSize();
+    const bounds = taskbarWindow.getBounds();
+    // Grow upward: keep bottom edge fixed
+    const newY = bounds.y + bounds.height - height;
+    taskbarWindow.setBounds({ x: bounds.x, y: newY, width: w, height }, true);
+  });
+
   // Sync state to taskbar window when main window sends updates
   ipcMain.handle('sync-taskbar-state', (_event, data) => {
     taskbarState = {

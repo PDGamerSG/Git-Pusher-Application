@@ -121,8 +121,8 @@ export default function App() {
         status,
         time: new Date().toISOString()
       };
-      // Keep last 8 activities per project
-      const updated = [entry, ...existing].slice(0, 8);
+      // Keep last 3 activities per project
+      const updated = [entry, ...existing].slice(0, 3);
       return { ...prev, [projectId]: updated };
     });
   };

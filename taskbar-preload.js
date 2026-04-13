@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('taskbarAPI', {
   setActiveProject: (id) => ipcRenderer.invoke('taskbar-set-active-project', id),
   push: (data) => ipcRenderer.invoke('taskbar-push', data),
   close: () => ipcRenderer.send('taskbar-close'),
+  resize: (height) => ipcRenderer.send('taskbar-resize', height),
   onStateUpdate: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('taskbar-state-update', handler);
