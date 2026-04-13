@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import RepoPanel from './components/RepoPanel';
 import TerminalLog from './components/TerminalLog';
@@ -71,6 +71,34 @@ export default function App() {
       setActiveProjectId(projectId);
     });
     return cleanup;
+  }, []);
+
+  // Always-fresh ref so the taskbar push handler never has stale state
+  const stateRef = useRef({});
+  stateRef.current = { projects, activeProject, refreshStatus };
+
+  // Listen for push from taskbar window — update history + refresh status
+  useEffect(() => {
+    if (!window.electronAPI?.onTaskbarPushComplete) return;
+    return window.electronAPI.onTaskbarPushComplete(({ repoPath }) => {
+      const { projects, activeProject, refreshStatus } = stateRef.current;
+      const proj = projects.find(p => p.path === repoPath);
+      if (proj) {
+        setPushHistory(prev => {
+          const existing = prev[proj.id] || [];
+          const entry = {
+            id: crypto.randomUUID(),
+            message: 'via taskbar',
+            status: 'completed',
+            time: new Date().toISOString()
+          };
+          return { ...prev, [proj.id]: [entry, ...existing].slice(0, 3) };
+        });
+      }
+      if (activeProject?.path === repoPath) {
+        refreshStatus();
+      }
+    });
   }, []);
 
   // Listen for terminal output from main process

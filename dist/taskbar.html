@@ -6,16 +6,25 @@
   <title>Git Pusher — Taskbar</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
+
+    html, body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       background: transparent;
       color: #fff;
       overflow: hidden;
       user-select: none;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Direction: up = bar at bottom, down = bar at top */
+    body {
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
+    }
+    body.dir-down {
+      justify-content: flex-start;
     }
 
     .bar {
@@ -29,14 +38,8 @@
       border: 1px solid #2a2a2a;
       border-radius: 10px;
       position: relative;
+      flex-shrink: 0;
     }
-
-    .dropdown-area {
-      flex: 1;
-      position: relative;
-      display: none;
-    }
-    .dropdown-area.open { display: block; }
 
     /* Drag handle */
     .drag-handle {
@@ -50,11 +53,7 @@
     }
     .drag-handle svg { opacity: 0.3; flex-shrink: 0; }
 
-    /* Logo */
-    .logo {
-      width: 16px; height: 16px;
-      flex-shrink: 0;
-    }
+    .logo { width: 16px; height: 16px; flex-shrink: 0; }
 
     /* Project selector */
     .project-btn {
@@ -76,11 +75,10 @@
     }
     .project-btn:hover { border-color: #10b981; }
 
-    /* Dropdown */
+    /* Dropdown: hidden by default, shown with .open */
     .dropdown {
       display: none;
       position: absolute;
-      bottom: 50px;
       left: 10px;
       background: #1a1a1a;
       border: 1px solid #333;
@@ -89,10 +87,23 @@
       max-height: 200px;
       overflow-y: auto;
       z-index: 100;
-      box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
       padding: 4px;
     }
     .dropdown.open { display: block; }
+
+    /* Upward (default): dropdown above bar */
+    body:not(.dir-down) .dropdown {
+      bottom: 50px;
+      top: auto;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.6);
+    }
+    /* Downward: dropdown below bar */
+    body.dir-down .dropdown {
+      top: 50px;
+      bottom: auto;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    }
+
     .dropdown-item {
       display: flex;
       align-items: center;
@@ -109,11 +120,7 @@
     .dropdown-item .check { width: 12px; font-size: 10px; flex-shrink: 0; }
 
     /* Feature input */
-    .input-wrap {
-      flex: 1;
-      min-width: 0;
-      position: relative;
-    }
+    .input-wrap { flex: 1; min-width: 0; }
     .feature-input {
       -webkit-app-region: no-drag;
       width: 100%;
@@ -150,6 +157,22 @@
       50% { opacity: 0.4; }
     }
 
+    /* Direction toggle */
+    .direction-btn {
+      -webkit-app-region: no-drag;
+      background: none;
+      border: none;
+      color: #444;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 2px 3px;
+      line-height: 1;
+      flex-shrink: 0;
+      transition: color 0.15s;
+      border-radius: 3px;
+    }
+    .direction-btn:hover { color: #10b981; background: #1a1a1a; }
+
     /* Close button */
     .close-btn {
       -webkit-app-region: no-drag;
@@ -183,7 +206,7 @@
       </svg>
     </div>
 
-    <!-- Project selector -->
+    <!-- Project selector + dropdown -->
     <button class="project-btn" id="projectBtn">No project</button>
     <div class="dropdown" id="dropdown"></div>
 
@@ -202,47 +225,81 @@
     <!-- Status -->
     <div class="status-dot idle" id="statusDot"></div>
 
+    <!-- Direction toggle -->
+    <button class="direction-btn" id="directionBtn" title="Toggle dropdown direction">▲</button>
+
     <!-- Close -->
-    <button class="close-btn" id="closeBtn" title="Close taskbar window">&times;</button>
+    <button class="close-btn" id="closeBtn" title="Close">&times;</button>
   </div>
 
   <script>
-    const projectBtn = document.getElementById('projectBtn');
-    const dropdown = document.getElementById('dropdown');
+    const projectBtn  = document.getElementById('projectBtn');
+    const dropdown    = document.getElementById('dropdown');
     const featureInput = document.getElementById('featureInput');
-    const statusDot = document.getElementById('statusDot');
-    const closeBtn = document.getElementById('closeBtn');
+    const statusDot   = document.getElementById('statusDot');
+    const closeBtn    = document.getElementById('closeBtn');
+    const directionBtn = document.getElementById('directionBtn');
 
-    let state = { projects: [], activeProjectId: '', grokApiKey: '' };
-    let isPushing = false;
+    const WINDOW_HEIGHT = 264;
+    const BAR_HEIGHT    = 48;
+
+    let state          = { projects: [], activeProjectId: '', grokApiKey: '' };
+    let isPushing      = false;
     let feedbackTimeout = null;
-    let dropdownOpen = false;
+    let dropdownOpen   = false;
+    let direction      = localStorage.getItem('taskbar-direction') || 'up';
 
-    function openDropdown() {
-      renderDropdown();
-      dropdown.classList.add('open');
-      if (!dropdownOpen) {
-        dropdownOpen = true;
-        window.taskbarAPI.resize(256);
+    // ── Direction ────────────────────────────────────────────────────────────
+    function applyDirection() {
+      if (direction === 'down') {
+        document.body.classList.add('dir-down');
+        directionBtn.textContent = '▼';
+        directionBtn.title = 'Dropdown opens below — click to open above';
+      } else {
+        document.body.classList.remove('dir-down');
+        directionBtn.textContent = '▲';
+        directionBtn.title = 'Dropdown opens above — click to open below';
       }
     }
+    applyDirection();
 
-    function closeDropdown() {
-      if (!dropdownOpen) return;
-      dropdownOpen = false;
-      dropdown.classList.remove('open');
-      window.taskbarAPI.resize(48);
+    directionBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeDropdown();
+      direction = direction === 'up' ? 'down' : 'up';
+      localStorage.setItem('taskbar-direction', direction);
+      applyDirection();
+    });
+
+    // ── Click-through for transparent area ───────────────────────────────────
+    // The window is always 264px; only the 48px bar and open dropdown are interactive.
+    // Everything else is transparent and should pass mouse events to the OS.
+    function updateMouseEvents() {
+      if (dropdownOpen) {
+        window.taskbarAPI.setIgnoreMouseEvents(false);
+        return;
+      }
+      // We can't use e.clientY here so this is called from mousemove
     }
 
-    function setStatus(status) {
-      statusDot.className = 'status-dot ' + status;
-    }
+    document.addEventListener('mousemove', (e) => {
+      if (dropdownOpen) {
+        window.taskbarAPI.setIgnoreMouseEvents(false);
+        return;
+      }
+      const overBar = direction === 'up'
+        ? e.clientY >= WINDOW_HEIGHT - BAR_HEIGHT
+        : e.clientY <= BAR_HEIGHT;
+      window.taskbarAPI.setIgnoreMouseEvents(!overBar, { forward: true });
+    });
 
-    function updateProjectBtn() {
-      const active = state.projects.find(p => p.id === state.activeProjectId);
-      projectBtn.textContent = active ? active.name : 'No project';
-    }
+    document.addEventListener('mouseleave', () => {
+      if (!dropdownOpen) {
+        window.taskbarAPI.setIgnoreMouseEvents(true, { forward: true });
+      }
+    });
 
+    // ── Dropdown ─────────────────────────────────────────────────────────────
     function renderDropdown() {
       dropdown.innerHTML = '';
       if (state.projects.length === 0) {
@@ -253,7 +310,10 @@
         const item = document.createElement('div');
         item.className = 'dropdown-item' + (p.id === state.activeProjectId ? ' active' : '');
         item.innerHTML = '<span class="check">' + (p.id === state.activeProjectId ? '✓' : '') + '</span>' + escapeHtml(p.name);
-        item.addEventListener('click', async () => {
+        item.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          state.activeProjectId = p.id;
+          updateProjectBtn();
           await window.taskbarAPI.setActiveProject(p.id);
           closeDropdown();
         });
@@ -261,23 +321,43 @@
       });
     }
 
+    function openDropdown() {
+      if (dropdownOpen) return;
+      renderDropdown();
+      dropdownOpen = true;
+      dropdown.classList.add('open');
+      window.taskbarAPI.setIgnoreMouseEvents(false);
+    }
+
+    function closeDropdown() {
+      if (!dropdownOpen) return;
+      dropdownOpen = false;
+      dropdown.classList.remove('open');
+    }
+
+    projectBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (dropdownOpen) closeDropdown(); else openDropdown();
+    });
+
+    document.addEventListener('click', () => closeDropdown());
+    dropdown.addEventListener('click', (e) => e.stopPropagation());
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
     function escapeHtml(str) {
       const div = document.createElement('div');
       div.textContent = str;
       return div.innerHTML;
     }
 
-    // Toggle dropdown
-    projectBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (dropdownOpen) closeDropdown(); else openDropdown();
-    });
+    function setStatus(s) { statusDot.className = 'status-dot ' + s; }
 
-    // Close dropdown on outside click
-    document.addEventListener('click', () => closeDropdown());
-    dropdown.addEventListener('click', (e) => e.stopPropagation());
+    function updateProjectBtn() {
+      const active = state.projects.find(p => p.id === state.activeProjectId);
+      projectBtn.textContent = active ? active.name : 'No project';
+    }
 
-    // Push on Enter
+    // ── Push ─────────────────────────────────────────────────────────────────
     featureInput.addEventListener('keydown', async (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
@@ -286,10 +366,7 @@
       if (!feature || isPushing) return;
 
       const active = state.projects.find(p => p.id === state.activeProjectId);
-      if (!active) {
-        flashError('select a project first');
-        return;
-      }
+      if (!active) { flashError('select a project first'); return; }
 
       isPushing = true;
       featureInput.disabled = true;
@@ -330,7 +407,6 @@
     function flashError(msg) {
       setStatus('error');
       featureInput.className = 'feature-input error';
-      const original = featureInput.value;
       featureInput.value = msg.length > 40 ? msg.slice(0, 37) + '...' : msg;
       clearTimeout(feedbackTimeout);
       feedbackTimeout = setTimeout(() => {
@@ -340,11 +416,9 @@
       }, 1500);
     }
 
-    closeBtn.addEventListener('click', () => {
-      window.taskbarAPI.close();
-    });
+    closeBtn.addEventListener('click', () => window.taskbarAPI.close());
 
-    // Load initial state
+    // ── State ─────────────────────────────────────────────────────────────────
     (async () => {
       try {
         state = await window.taskbarAPI.getState();
@@ -354,7 +428,6 @@
       }
     })();
 
-    // Listen for state updates from main window
     window.taskbarAPI.onStateUpdate((data) => {
       state = data;
       updateProjectBtn();

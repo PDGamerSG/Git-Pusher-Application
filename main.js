@@ -406,7 +406,7 @@ function createTaskbarWindow() {
   const { width, height } = primaryDisplay.workAreaSize;
 
   const winWidth = 480;
-  const winHeight = 48;
+  const winHeight = 264; // fixed: bar (48px) + dropdown space (200px) + padding
 
   taskbarWindow = new BrowserWindow({
     width: winWidth,
@@ -583,6 +583,9 @@ app.whenReady().then(() => {
         }
       }
 
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('taskbar-push-complete', { repoPath });
+      }
       return { success: true, error: null };
     } catch (err) {
       return { success: false, error: err.message };
@@ -595,13 +598,9 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.on('taskbar-resize', (_event, height) => {
+  ipcMain.on('taskbar-set-ignore-mouse-events', (_event, ignore, options) => {
     if (!taskbarWindow || taskbarWindow.isDestroyed()) return;
-    const [w] = taskbarWindow.getSize();
-    const bounds = taskbarWindow.getBounds();
-    // Grow upward: keep bottom edge fixed
-    const newY = bounds.y + bounds.height - height;
-    taskbarWindow.setBounds({ x: bounds.x, y: newY, width: w, height }, true);
+    taskbarWindow.setIgnoreMouseEvents(ignore, options || {});
   });
 
   // Sync state to taskbar window when main window sends updates
