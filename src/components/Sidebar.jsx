@@ -134,8 +134,7 @@ export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, on
     // Expand the active project by default
     return activeProjectId ? new Set([activeProjectId]) : new Set();
   });
-  const [isAddingTaskbar, setIsAddingTaskbar] = useState(false);
-  const [taskbarResult, setTaskbarResult] = useState(null);
+  const [taskbarOpen, setTaskbarOpen] = useState(false);
 
   const toggleExpand = (id) => {
     setExpandedIds(prev => {
@@ -146,43 +145,13 @@ export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, on
     });
   };
 
-  const readStorageJson = (key, fallback) => {
+  const handleToggleTaskbar = async () => {
+    if (!window.electronAPI?.toggleTaskbarWindow) return;
     try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch {
-      return fallback;
-    }
-  };
-
-  const handleAddTaskbarWindow = async () => {
-    if (isAddingTaskbar) return;
-
-    if (!window.electronAPI?.installTaskbarBand) {
-      setTaskbarResult({ success: false, message: 'Taskbar integration is unavailable in this build.' });
-      return;
-    }
-
-    const payload = {
-      projects: readStorageJson('projects', []),
-      activeProjectId: readStorageJson('activeProjectId', ''),
-      grokApiKey: readStorageJson('grokApiKey', '')
-    };
-
-    setIsAddingTaskbar(true);
-    setTaskbarResult(null);
-
-    try {
-      const result = await window.electronAPI.installTaskbarBand(payload);
-      if (result?.success) {
-        setTaskbarResult({ success: true, message: result.message || 'Taskbar window added.' });
-      } else {
-        setTaskbarResult({ success: false, message: result?.error || 'Failed to add taskbar window.' });
-      }
+      const result = await window.electronAPI.toggleTaskbarWindow();
+      setTaskbarOpen(result?.visible || false);
     } catch (err) {
-      setTaskbarResult({ success: false, message: err?.message || 'Failed to add taskbar window.' });
-    } finally {
-      setIsAddingTaskbar(false);
+      console.error('Failed to toggle taskbar window:', err);
     }
   };
 
@@ -258,22 +227,19 @@ export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, on
           </button>
 
           <button
-            onClick={handleAddTaskbarWindow}
-            disabled={isAddingTaskbar}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-[12px] text-neutral-400 hover:text-white hover:bg-neutral-800/60 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleToggleTaskbar}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2 text-[12px] rounded-md transition-colors ${
+              taskbarOpen
+                ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15'
+                : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
+            }`}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="4" width="18" height="12" rx="1.5" />
               <path d="M8 20h8M12 16v4" />
             </svg>
-            <span>{isAddingTaskbar ? 'Adding taskbar...' : 'Add taskbar window'}</span>
+            <span>{taskbarOpen ? 'Hide taskbar window' : 'Show taskbar window'}</span>
           </button>
-
-          {taskbarResult && (
-            <p className={`text-[10px] px-2 ${taskbarResult.success ? 'text-emerald-400' : 'text-red-400'}`}>
-              {taskbarResult.message}
-            </p>
-          )}
         </div>
       </div>
     </div>

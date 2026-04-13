@@ -10,6 +10,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   detectProvider: (apiKey) => ipcRenderer.invoke('detect-provider', apiKey),
   checkGitInit: (repoPath) => ipcRenderer.invoke('check-git-init', repoPath),
   initAndPush: (data) => ipcRenderer.invoke('init-and-push', data),
+  toggleTaskbarWindow: () => ipcRenderer.invoke('toggle-taskbar-window'),
+  syncTaskbarState: (data) => ipcRenderer.invoke('sync-taskbar-state', data),
+  onTaskbarProjectChanged: (callback) => {
+    const handler = (_event, projectId) => callback(projectId);
+    ipcRenderer.on('taskbar-project-changed', handler);
+    return () => ipcRenderer.removeListener('taskbar-project-changed', handler);
+  },
   syncBandData: (data) => ipcRenderer.invoke('sync-band-data', data),
   installTaskbarBand: (data) => ipcRenderer.invoke('install-taskbar-band', data),
   onTerminalOutput: (callback) => {

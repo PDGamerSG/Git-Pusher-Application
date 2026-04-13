@@ -54,6 +54,25 @@ export default function App() {
     });
   }, [projects, activeProjectId, grokApiKey]);
 
+  // Sync state to the taskbar mini-window
+  useEffect(() => {
+    if (!window.electronAPI?.syncTaskbarState) return;
+    window.electronAPI.syncTaskbarState({
+      projects,
+      activeProjectId,
+      grokApiKey
+    }).catch(() => {});
+  }, [projects, activeProjectId, grokApiKey]);
+
+  // Listen for project switch from taskbar window
+  useEffect(() => {
+    if (!window.electronAPI?.onTaskbarProjectChanged) return;
+    const cleanup = window.electronAPI.onTaskbarProjectChanged((projectId) => {
+      setActiveProjectId(projectId);
+    });
+    return cleanup;
+  }, []);
+
   // Listen for terminal output from main process
   useEffect(() => {
     if (!window.electronAPI) return;

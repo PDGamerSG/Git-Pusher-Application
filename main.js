@@ -7,8 +7,12 @@ const { registerGitHandlers } = require('./src/ipc/gitHandlers');
 const { registerGrokHandler } = require('./src/ipc/grokHandler');
 
 let mainWindow;
+let taskbarWindow = null;
 const DESK_BAND_CLSID = '{A47D7A2A-1F8D-4C79-8DD9-4D9724E4C8F0}';
 const DESK_BAND_NAME = 'GitPusherBand';
+
+// Cached state for the taskbar mini-window
+let taskbarState = { projects: [], activeProjectId: '', grokApiKey: '' };
 
 function normalizeBandPayload(payload = {}) {
   const incomingProjects = Array.isArray(payload.projects) ? payload.projects : [];
@@ -390,6 +394,51 @@ async function installTaskbarBand(payload = {}) {
   }
 }
 
+function createTaskbarWindow() {
+  if (taskbarWindow && !taskbarWindow.isDestroyed()) {
+    taskbarWindow.show();
+    taskbarWindow.focus();
+    return;
+  }
+
+  const { screen } = require('electron');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
+
+  const winWidth = 480;
+  const winHeight = 48;
+
+  taskbarWindow = new BrowserWindow({
+    width: winWidth,
+    height: winHeight,
+    x: Math.round((width - winWidth) / 2),
+    y: height - winHeight - 8,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    movable: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'taskbar-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  taskbarWindow.loadFile(path.join(__dirname, 'dist', 'taskbar.html'));
+
+  taskbarWindow.once('ready-to-show', () => {
+    taskbarWindow.show();
+  });
+
+  taskbarWindow.on('closed', () => {
+    taskbarWindow = null;
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -441,6 +490,123 @@ app.whenReady().then(() => {
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to add taskbar band.' };
     }
+  });
+
+  // Taskbar mini-window IPC
+  ipcMain.handle('toggle-taskbar-window', () => {
+    if (taskbarWindow && !taskbarWindow.isDestroyed()) {
+      taskbarWindow.close();
+      taskbarWindow = null;
+      return { visible: false };
+    }
+    createTaskbarWindow();
+    return { visible: true };
+  });
+
+  ipcMain.handle('taskbar-get-state', () => {
+    return taskbarState;
+  });
+
+  ipcMain.handle('taskbar-set-active-project', (_event, projectId) => {
+    taskbarState.activeProjectId = projectId;
+    // Notify main window about the project switch
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('taskbar-project-changed', projectId);
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('taskbar-push', async (_event, { repoPath, featureName, apiKey }) => {
+    const simpleGit = require('simple-git');
+    const { spawn } = require('child_process');
+
+    function runGit(args) {
+      return new Promise((resolve, reject) => {
+        const proc = spawn('git', args, { cwd: repoPath });
+        let output = '';
+        proc.stdout.on('data', (chunk) => { output += chunk.toString(); });
+        proc.stderr.on('data', (chunk) => { output += chunk.toString(); });
+        proc.on('close', (code) => {
+          if (code === 0) resolve(output);
+          else reject(new Error(`git ${args.join(' ')} failed: ${output}`));
+        });
+        proc.on('error', reject);
+      });
+    }
+
+    try {
+      // 1. Check for changes
+      const git = simpleGit(repoPath);
+      const status = await git.status();
+      if (status.files.length === 0) {
+        return { success: false, error: 'No changes to push' };
+      }
+
+      const diffStat = status.files.map(f => `${f.working_dir || f.index} ${f.path}`).join('\n');
+
+      // 2. Generate commit message
+      const OpenAI = require('openai');
+      function getProvider(key) {
+        if (key.startsWith('gsk_')) return { name: 'Groq', baseURL: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' };
+        if (key.startsWith('xai-')) return { name: 'Grok (xAI)', baseURL: 'https://api.x.ai/v1', model: 'grok-3-mini' };
+        if (key.startsWith('sk-')) return { name: 'OpenAI', baseURL: 'https://api.openai.com/v1', model: 'gpt-4o-mini' };
+        return { name: 'Groq', baseURL: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' };
+      }
+
+      let commitMessage = `feat: ${featureName}`;
+      if (apiKey && apiKey.trim()) {
+        const provider = getProvider(apiKey.trim());
+        const client = new OpenAI({ apiKey: apiKey.trim(), baseURL: provider.baseURL });
+        const response = await client.chat.completions.create({
+          model: provider.model,
+          messages: [
+            { role: 'system', content: 'You are a Git commit message generator. Given a short feature description and a git diff stat, return ONLY a single conventional commit message. No explanation, no quotes, just the commit message string.' },
+            { role: 'user', content: `Feature: ${featureName}\n\nDiff stat:\n${diffStat}` }
+          ],
+          temperature: 0.3
+        });
+        commitMessage = response.choices[0].message.content.trim();
+      }
+
+      // 3. Add, commit, push
+      await runGit(['add', '.']);
+      await runGit(['commit', '-m', commitMessage]);
+
+      try {
+        await runGit(['push']);
+      } catch (pushErr) {
+        if (/no upstream branch|--set-upstream/i.test(pushErr.message)) {
+          const branch = (await runGit(['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+          await runGit(['push', '--set-upstream', 'origin', branch]);
+        } else {
+          throw pushErr;
+        }
+      }
+
+      return { success: true, error: null };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.on('taskbar-close', () => {
+    if (taskbarWindow && !taskbarWindow.isDestroyed()) {
+      taskbarWindow.close();
+    }
+  });
+
+  // Sync state to taskbar window when main window sends updates
+  ipcMain.handle('sync-taskbar-state', (_event, data) => {
+    taskbarState = {
+      projects: Array.isArray(data.projects) ? data.projects : [],
+      activeProjectId: data.activeProjectId || '',
+      grokApiKey: data.grokApiKey || ''
+    };
+    // Forward to taskbar window if open
+    if (taskbarWindow && !taskbarWindow.isDestroyed()) {
+      taskbarWindow.webContents.send('taskbar-state-update', taskbarState);
+    }
+    return { success: true };
   });
 
   // Register git and grok IPC handlers
