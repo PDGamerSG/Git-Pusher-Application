@@ -8,6 +8,7 @@ const { registerGrokHandler } = require('./src/ipc/grokHandler');
 
 let mainWindow;
 let taskbarWindow = null;
+let taskbarDragOffset = null;
 const DESK_BAND_CLSID = '{A47D7A2A-1F8D-4C79-8DD9-4D9724E4C8F0}';
 const DESK_BAND_NAME = 'GitPusherBand';
 
@@ -601,6 +602,27 @@ app.whenReady().then(() => {
   ipcMain.on('taskbar-set-ignore-mouse-events', (_event, ignore, options) => {
     if (!taskbarWindow || taskbarWindow.isDestroyed()) return;
     taskbarWindow.setIgnoreMouseEvents(ignore, options || {});
+  });
+
+  ipcMain.on('taskbar-drag-start', (_event, { screenX, screenY }) => {
+    if (!taskbarWindow || taskbarWindow.isDestroyed()) return;
+    const [winX, winY] = taskbarWindow.getPosition();
+    const [winW, winH] = taskbarWindow.getSize();
+    taskbarDragOffset = { x: screenX - winX, y: screenY - winY, w: winW, h: winH };
+  });
+
+  ipcMain.on('taskbar-drag-move', (_event, { screenX, screenY }) => {
+    if (!taskbarWindow || taskbarWindow.isDestroyed() || !taskbarDragOffset) return;
+    taskbarWindow.setBounds({
+      x: Math.round(screenX - taskbarDragOffset.x),
+      y: Math.round(screenY - taskbarDragOffset.y),
+      width: taskbarDragOffset.w,
+      height: taskbarDragOffset.h
+    });
+  });
+
+  ipcMain.on('taskbar-drag-end', () => {
+    taskbarDragOffset = null;
   });
 
   // Sync state to taskbar window when main window sends updates
