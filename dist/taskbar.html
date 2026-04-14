@@ -11,10 +11,10 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       background: transparent;
       color: #fff;
-      overflow: hidden;
+      overflow: visible;
       user-select: none;
       width: 100%;
-      height: 100%;
+      height: 80%;
     }
 
     body {
@@ -29,13 +29,12 @@
     .bar {
       display: flex;
       align-items: center;
-      height: 38px;
-      min-height: 38px;
-      padding: 0 8px;
+      height: 35px;
+      min-height: 30px;
+      padding: 0 5px;
       gap: 6px;
-      background: #111;
-      border: 1px solid #2a2a2a;
-      border-radius: 0;
+      background: transparent;
+      /* border: 1px solid #2a2a2a; */
       position: relative;
       flex-shrink: 0;
     }
@@ -48,6 +47,8 @@
       flex-shrink: 0;
       cursor: grab;
       padding: 3px 2px;
+      position: relative;
+      top: 3px;
     }
     .drag-handle:active { cursor: grabbing; }
     .drag-handle svg { opacity: 0.3; flex-shrink: 0; }
@@ -57,12 +58,14 @@
     /* Project selector */
     .project-btn {
       background: #1a1a1a;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
       border: 1px solid #333;
-      border-radius: 4px;
-      color: #10b981;
-      font-size: 10px;
-      font-weight: 600;
-      padding: 3px 8px;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 400;
+      height: 22px;
+      line-height: 22px;
+      padding: 0 7px;
       cursor: pointer;
       max-width: 100px;
       overflow: hidden;
@@ -70,8 +73,11 @@
       white-space: nowrap;
       flex-shrink: 0;
       transition: border-color 0.15s;
+      position: relative;
+      top: 4px;
+      left: 1px;
     }
-    .project-btn:hover { border-color: #10b981; }
+    .project-btn:hover { border-color: #ffffff; }
 
     /* Dropdown */
     .dropdown {
@@ -80,7 +86,6 @@
       left: 8px;
       background: #1a1a1a;
       border: 1px solid #333;
-      border-radius: 4px;
       min-width: 160px;
       max-height: 180px;
       overflow-y: auto;
@@ -90,26 +95,24 @@
     .dropdown.open { display: block; }
 
     body:not(.dir-down) .dropdown {
-      bottom: 40px;
+      bottom: 37px;
       top: auto;
-      box-shadow: 0 -4px 20px rgba(0,0,0,0.6);
     }
     body.dir-down .dropdown {
-      top: 40px;
+      top: 37px;
       bottom: auto;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
     }
 
     .dropdown-item {
       display: flex;
       align-items: center;
       gap: 5px;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
       padding: 5px 8px;
+      color: #ffffff;
       font-size: 10px;
       color: #ccc;
       cursor: pointer;
-      border-radius: 3px;
-      transition: background 0.1s;
     }
     .dropdown-item:hover { background: #252525; color: #fff; }
     .dropdown-item.active { color: #10b981; }
@@ -120,16 +123,20 @@
     .feature-input {
       width: 100%;
       background: #0a0a0a;
+      height: 22px;
       border: 1px solid #333;
-      border-radius: 4px;
       color: #fff;
-      font-size: 11px;
-      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 300;
+      padding: 0 7px;
+      line-height: 20px;
       outline: none;
       transition: border-color 0.2s;
+      position: relative;
+      top: 2.5px;
     }
     .feature-input::placeholder { color: #555; }
-    .feature-input:focus { border-color: #10b981; }
+    .feature-input:focus { border-color: #ffffff; }
     .feature-input.success { border-color: #10b981; }
     .feature-input.error { border-color: #ef4444; color: #fca5a5; }
     .feature-input:disabled { opacity: 0.4; }
@@ -141,6 +148,8 @@
       flex-shrink: 0;
       background: #555;
       transition: background 0.2s;
+      position: relative;
+      top: 3px;
     }
     .status-dot.idle { background: #555; }
     .status-dot.pushing { background: #f59e0b; animation: pulse 1s infinite; }
@@ -162,11 +171,11 @@
         <circle cx="1.5" cy="5" r="1.1"/><circle cx="4.5" cy="5" r="1.1"/>
         <circle cx="1.5" cy="8.5" r="1.1"/><circle cx="4.5" cy="8.5" r="1.1"/>
         <circle cx="1.5" cy="12" r="1.1"/><circle cx="4.5" cy="12" r="1.1"/>
-      </svg>
+      <!-- </svg>
       <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.5">
         <circle cx="12" cy="12" r="3"/>
         <path d="M12 3v3M12 18v3M3 12h3M18 12h3" stroke-linecap="round"/>
-      </svg>
+      </svg> -->
     </div>
 
     <!-- Project selector + dropdown -->
@@ -179,7 +188,7 @@
         type="text"
         class="feature-input"
         id="featureInput"
-        placeholder="type feature and press Enter..."
+        placeholder="Feature pls:)"
         autocomplete="off"
         spellcheck="false"
       />
