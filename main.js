@@ -9,6 +9,9 @@ const { registerGrokHandler } = require('./src/ipc/grokHandler');
 let mainWindow;
 let taskbarWindow = null;
 let taskbarDragOffset = null;
+let taskbarMoveTopInterval = null;
+let mainMoveTopInterval = null;
+let mainWindowPinned = false;
 const DESK_BAND_CLSID = '{A47D7A2A-1F8D-4C79-8DD9-4D9724E4C8F0}';
 const DESK_BAND_NAME = 'GitPusherBand';
 
@@ -417,7 +420,7 @@ function createTaskbarWindow() {
     frame: false,
     transparent: true,
     resizable: false,
-    alwaysOnTop: true,
+    alwaysOnTop: false,
     skipTaskbar: true,
     movable: true,
     show: false,
@@ -433,9 +436,20 @@ function createTaskbarWindow() {
 
   taskbarWindow.once('ready-to-show', () => {
     taskbarWindow.show();
+    // Use moveTop() interval instead of alwaysOnTop so window stays on current
+    // virtual desktop only (HWND_TOPMOST causes window to appear on all desktops)
+    taskbarMoveTopInterval = setInterval(() => {
+      if (taskbarWindow && !taskbarWindow.isDestroyed() && taskbarWindow.isVisible()) {
+        taskbarWindow.moveTop();
+      }
+    }, 100);
   });
 
   taskbarWindow.on('closed', () => {
+    if (taskbarMoveTopInterval) {
+      clearInterval(taskbarMoveTopInterval);
+      taskbarMoveTopInterval = null;
+    }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('taskbar-closed');
     }
@@ -499,8 +513,7 @@ app.whenReady().then(() => {
   // Taskbar mini-window IPC
   ipcMain.handle('toggle-taskbar-window', () => {
     if (taskbarWindow && !taskbarWindow.isDestroyed()) {
-      taskbarWindow.close();
-      taskbarWindow = null;
+      taskbarWindow.close(); // 'closed' event handles interval cleanup + notify main
       return { visible: false };
     }
     createTaskbarWindow();
@@ -651,9 +664,21 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('toggle-always-on-top', () => {
-    const current = mainWindow.isAlwaysOnTop();
-    mainWindow.setAlwaysOnTop(!current, 'screen-saver');
-    return { alwaysOnTop: !current };
+    mainWindowPinned = !mainWindowPinned;
+    if (mainWindowPinned) {
+      // moveTop() uses HWND_TOP (not HWND_TOPMOST) — stays on current virtual desktop only
+      mainMoveTopInterval = setInterval(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.moveTop();
+        }
+      }, 100);
+    } else {
+      if (mainMoveTopInterval) {
+        clearInterval(mainMoveTopInterval);
+        mainMoveTopInterval = null;
+      }
+    }
+    return { alwaysOnTop: mainWindowPinned };
   });
 
   // Register git and grok IPC handlers
