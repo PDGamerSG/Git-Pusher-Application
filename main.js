@@ -9,9 +9,11 @@ const { registerGrokHandler } = require('./src/ipc/grokHandler');
 let mainWindow;
 let taskbarWindow = null;
 let taskbarDragOffset = null;
-let taskbarMoveTopInterval = null;
-let mainMoveTopInterval = null;
 let mainWindowPinned = false;
+let virtualDesktopWatcher = null;
+let mainWindowMinimized = false;
+let isQuitting = false;
+let alwaysOnTopEnforcer = null;
 const DESK_BAND_CLSID = '{A47D7A2A-1F8D-4C79-8DD9-4D9724E4C8F0}';
 const DESK_BAND_NAME = 'GitPusherBand';
 
@@ -398,10 +400,137 @@ async function installTaskbarBand(payload = {}) {
   }
 }
 
+// Uses the documented IVirtualDesktopManager COM API (stable since Win10 1607)
+// to detect when the user switches virtual desktops. We watch the MAIN window's
+// desktop assignment (not the taskbar overlay, which is HWND_TOPMOST and always
+// reports "on current desktop"). When the main window is on a different desktop
+// we hide the overlay; when it returns we show it again.
+function startVirtualDesktopWatcher() {
+  stopVirtualDesktopWatcher();
+
+  if (process.platform !== 'win32') return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  const hwndBuffer = mainWindow.getNativeWindowHandle();
+  // HWND is pointer-sized; on 64-bit Windows the buffer is 8 bytes but the
+  // actual HWND value fits in 32 bits.
+  const hwnd = hwndBuffer.length >= 8
+    ? Number(hwndBuffer.readBigUInt64LE(0))
+    : hwndBuffer.readUInt32LE(0);
+
+  const script = `
+$sig = @'
+using System;
+using System.Runtime.InteropServices;
+[ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("A5CD92FF-29BE-454C-8D04-D82879FB3F1B")]
+public interface IVirtualDesktopManager {
+    bool IsWindowOnCurrentVirtualDesktop(IntPtr topLevelWindow);
+    Guid GetWindowDesktopId(IntPtr topLevelWindow);
+    void MoveWindowToDesktop(IntPtr topLevelWindow, ref Guid desktopId);
+}
+public class VDM {
+    public static IVirtualDesktopManager Create() {
+        return (IVirtualDesktopManager)Activator.CreateInstance(
+            Type.GetTypeFromCLSID(new Guid("AA509086-5CA9-4C25-8F95-589D3C07B48A")));
+    }
+}
+'@
+Add-Type -TypeDefinition $sig -ErrorAction SilentlyContinue
+try { $vdm = [VDM]::Create() } catch { exit 1 }
+$hwnd = [IntPtr]${hwnd}
+while ($true) {
+    try {
+        $r = $vdm.IsWindowOnCurrentVirtualDesktop($hwnd)
+        [Console]::WriteLine($(if ($r) { '1' } else { '0' }))
+        [Console]::Out.Flush()
+    } catch {
+        [Console]::WriteLine('1')
+        [Console]::Out.Flush()
+    }
+    [System.Threading.Thread]::Sleep(150)
+}
+`;
+
+  const { spawn } = require('child_process');
+  virtualDesktopWatcher = spawn('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-Command', script
+  ], { windowsHide: true });
+
+  let buf = '';
+  virtualDesktopWatcher.stdout.on('data', (chunk) => {
+    buf += chunk.toString();
+    const lines = buf.split(/\r?\n/);
+    buf = lines.pop();
+    for (const line of lines) {
+      const val = line.trim();
+      if (!val) continue;
+      if (!taskbarWindow || taskbarWindow.isDestroyed()) continue;
+      if (val === '0') {
+        // Main window is on a different virtual desktop — hide overlay
+        if (taskbarWindow.isVisible()) taskbarWindow.hide();
+      } else {
+        // Main window is on the current desktop — ensure overlay is visible
+        if (!taskbarWindow.isVisible()) showTaskbarOnTop(false);
+      }
+    }
+  });
+
+  virtualDesktopWatcher.on('error', () => { virtualDesktopWatcher = null; });
+  virtualDesktopWatcher.on('close', () => { virtualDesktopWatcher = null; });
+}
+
+function stopVirtualDesktopWatcher() {
+  if (virtualDesktopWatcher) {
+    try { virtualDesktopWatcher.kill(); } catch (_) {}
+    virtualDesktopWatcher = null;
+  }
+}
+
+// Re-applies always-on-top every time the taskbar is shown.
+// Windows drops HWND_TOPMOST after hide→show cycles and when other windows take focus.
+function enforceTaskbarOnTop() {
+  if (!taskbarWindow || taskbarWindow.isDestroyed()) return;
+  taskbarWindow.setAlwaysOnTop(true, 'pop-up-menu');
+}
+
+// Show taskbar window and guarantee it stays on top.
+// activate=false uses showInactive (no focus steal); activate=true brings it forward.
+function showTaskbarOnTop(activate) {
+  if (!taskbarWindow || taskbarWindow.isDestroyed()) return;
+  if (activate) {
+    taskbarWindow.show();
+  } else {
+    taskbarWindow.showInactive();
+  }
+  enforceTaskbarOnTop();
+}
+
+function startAlwaysOnTopEnforcer() {
+  stopAlwaysOnTopEnforcer();
+  // Periodic safety net: Windows can silently demote the Z-order when the user
+  // interacts with other always-on-top windows or full-screen apps.
+  alwaysOnTopEnforcer = setInterval(() => {
+    if (!taskbarWindow || taskbarWindow.isDestroyed()) {
+      stopAlwaysOnTopEnforcer();
+      return;
+    }
+    if (taskbarWindow.isVisible()) {
+      enforceTaskbarOnTop();
+    }
+  }, 3000);
+}
+
+function stopAlwaysOnTopEnforcer() {
+  if (alwaysOnTopEnforcer) {
+    clearInterval(alwaysOnTopEnforcer);
+    alwaysOnTopEnforcer = null;
+  }
+}
+
 function createTaskbarWindow() {
   if (taskbarWindow && !taskbarWindow.isDestroyed()) {
-    taskbarWindow.show();
-    taskbarWindow.focus();
+    showTaskbarOnTop(true);
     return;
   }
 
@@ -420,8 +549,8 @@ function createTaskbarWindow() {
     frame: false,
     transparent: true,
     resizable: false,
-    alwaysOnTop: false,
-    skipTaskbar: true,
+    alwaysOnTop: true,   // HWND_TOPMOST: stays on top; the virtualDesktopWatcher
+    skipTaskbar: true,   // hides it when the user is on a different virtual desktop
     movable: true,
     show: false,
     webPreferences: {
@@ -432,26 +561,33 @@ function createTaskbarWindow() {
     }
   });
 
+  enforceTaskbarOnTop();
+
+  // Re-apply always-on-top every time the window becomes visible (covers all show paths)
+  taskbarWindow.on('show', () => {
+    enforceTaskbarOnTop();
+  });
+
   taskbarWindow.loadFile(path.join(__dirname, 'dist', 'taskbar.html'));
 
   taskbarWindow.once('ready-to-show', () => {
-    taskbarWindow.show();
-    // Use moveTop() interval instead of alwaysOnTop so window stays on current
-    // virtual desktop only (HWND_TOPMOST causes window to appear on all desktops)
-    taskbarMoveTopInterval = setInterval(() => {
-      if (taskbarWindow && !taskbarWindow.isDestroyed() && taskbarWindow.isVisible()) {
-        taskbarWindow.moveTop();
-      }
-    }, 100);
+    showTaskbarOnTop(true);
+    startAlwaysOnTopEnforcer();
+    startVirtualDesktopWatcher();
   });
 
   taskbarWindow.on('closed', () => {
-    if (taskbarMoveTopInterval) {
-      clearInterval(taskbarMoveTopInterval);
-      taskbarMoveTopInterval = null;
-    }
+    stopAlwaysOnTopEnforcer();
+    stopVirtualDesktopWatcher();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('taskbar-closed');
+      // If main window was minimized/hidden while taskbar was open, restore it
+      // so the user isn't left with no visible window
+      if (mainWindowMinimized || !mainWindow.isVisible()) {
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindowMinimized = false;
+      }
     }
     taskbarWindow = null;
   });
@@ -475,6 +611,35 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+
+  // Track minimize state — keeps taskbar overlay visible when main window is minimized
+  mainWindow.on('minimize', () => {
+    mainWindowMinimized = true;
+    // Ensure the taskbar overlay stays visible and on top
+    showTaskbarOnTop(false);
+  });
+
+  mainWindow.on('restore', () => {
+    mainWindowMinimized = false;
+    // Re-enforce after restore — Windows may have demoted the overlay Z-order
+    enforceTaskbarOnTop();
+  });
+
+  // When main window gains focus, Windows can push the overlay behind it.
+  // Re-enforce on a short delay so the focus transition completes first.
+  mainWindow.on('focus', () => {
+    setTimeout(enforceTaskbarOnTop, 100);
+  });
+
+  // When the taskbar overlay is active, intercept close → minimize instead of quit.
+  // This keeps the overlay running. User can still quit via the overlay's close button
+  // or by closing the main window when no overlay is active.
+  mainWindow.on('close', (e) => {
+    if (!isQuitting && taskbarWindow && !taskbarWindow.isDestroyed()) {
+      e.preventDefault();
+      mainWindow.minimize();
+    }
+  });
 
   if (process.argv.includes('--inspect')) {
     mainWindow.webContents.openDevTools();
@@ -623,6 +788,12 @@ app.whenReady().then(() => {
     }
   });
 
+  // Allow quitting the entire app (e.g. from taskbar overlay or when user really wants to exit)
+  ipcMain.on('app-quit', () => {
+    isQuitting = true;
+    app.quit();
+  });
+
   ipcMain.on('taskbar-set-ignore-mouse-events', (_event, ignore, options) => {
     if (!taskbarWindow || taskbarWindow.isDestroyed()) return;
     taskbarWindow.setIgnoreMouseEvents(ignore, options || {});
@@ -665,19 +836,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('toggle-always-on-top', () => {
     mainWindowPinned = !mainWindowPinned;
-    if (mainWindowPinned) {
-      // moveTop() uses HWND_TOP (not HWND_TOPMOST) — stays on current virtual desktop only
-      mainMoveTopInterval = setInterval(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.moveTop();
-        }
-      }, 100);
-    } else {
-      if (mainMoveTopInterval) {
-        clearInterval(mainMoveTopInterval);
-        mainMoveTopInterval = null;
-      }
-    }
+    mainWindow.setAlwaysOnTop(mainWindowPinned, 'floating');
     return { alwaysOnTop: mainWindowPinned };
   });
 
@@ -688,6 +847,12 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
+  stopAlwaysOnTopEnforcer();
+  stopVirtualDesktopWatcher();
 });
 
 app.on('window-all-closed', () => {

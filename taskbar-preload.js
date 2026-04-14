@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('taskbarAPI', {
   setActiveProject: (id) => ipcRenderer.invoke('taskbar-set-active-project', id),
   push: (data) => ipcRenderer.invoke('taskbar-push', data),
   close: () => ipcRenderer.send('taskbar-close'),
+  quitApp: () => ipcRenderer.send('app-quit'),
   setIgnoreMouseEvents: (ignore, options) => ipcRenderer.send('taskbar-set-ignore-mouse-events', ignore, options),
   dragStart: (data) => ipcRenderer.send('taskbar-drag-start', data),
   dragMove:  (data) => ipcRenderer.send('taskbar-drag-move', data),

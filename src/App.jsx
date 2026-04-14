@@ -171,6 +171,13 @@ export default function App() {
     }
   }, [gitInitStatus, refreshStatus]);
 
+  // Auto-refresh commits every 30s so new commits appear without manual refresh
+  useEffect(() => {
+    if (!activeProject) return;
+    const interval = setInterval(refreshStatus, 30000);
+    return () => clearInterval(interval);
+  }, [activeProject, refreshStatus]);
+
   // Add a push activity entry for a project
   const addActivity = (projectId, message, status) => {
     setPushHistory(prev => {
