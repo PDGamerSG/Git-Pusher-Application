@@ -2,6 +2,7 @@
   "name": "git-pusher",
   "version": "1.0.0",
   "description": "Smart Git commit/push assistant with AI-generated commit messages",
+  "author": "PDGamerSG",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -15,17 +16,37 @@
     "productName": "Git Pusher",
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Git Pusher"
     },
     "files": [
       "main.js",
       "preload.js",
+      "taskbar-preload.js",
       "dist/**/*",
-      "src/ipc/**/*"
+      "src/ipc/**/*",
+      "assets/**/*"
     ],
     "directories": {
       "output": "release"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets/",
+        "filter": ["**/*"]
+      }
+    ]
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

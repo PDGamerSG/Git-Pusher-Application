@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -15,6 +15,7 @@ let mainWindowMinimized = false;
 let isQuitting = false;
 let alwaysOnTopEnforcer = null;
 let taskbarPrefs = { x: null, y: null };
+let tray = null;
 
 const TASKBAR_WIDTH = 340;
 const TASKBAR_HEIGHT = 238;  // bar (38px) + dropdown space (200px)
@@ -608,9 +609,10 @@ async function createTaskbarWindow() {
   taskbarWindow.on('closed', () => {
     stopAlwaysOnTopEnforcer();
     stopVirtualDesktopWatcher();
+    destroyTray();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('taskbar-closed');
-      // If main window was minimized/hidden while taskbar was open, restore it
+      // If main window was hidden to tray while taskbar was open, restore it
       // so the user isn't left with no visible window
       if (mainWindowMinimized || !mainWindow.isVisible()) {
         mainWindow.show();
@@ -622,7 +624,71 @@ async function createTaskbarWindow() {
   });
 }
 
+function createTray() {
+  if (tray && !tray.isDestroyed()) return;
+
+  const iconCandidates = [
+    path.join(__dirname, 'assets', 'icon.ico'),
+    path.join(process.resourcesPath || '', 'assets', 'icon.ico')
+  ];
+  const iconPath = iconCandidates.find(p => fs.existsSync(p));
+  const trayIcon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Git Pusher');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show Window',
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          mainWindow.focus();
+          mainWindowMinimized = false;
+        }
+        destroyTray();
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  tray.on('double-click', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindowMinimized = false;
+    }
+    destroyTray();
+  });
+}
+
+function destroyTray() {
+  if (tray && !tray.isDestroyed()) {
+    tray.destroy();
+  }
+  tray = null;
+}
+
 function createWindow() {
+  // Resolve icon path — works both in dev and packaged app
+  // In packaged app: extraResources puts assets in resources/assets/
+  // In dev: assets/ is next to main.js
+  const iconCandidates = [
+    path.join(__dirname, 'assets', 'icon.ico'),
+    path.join(process.resourcesPath || '', 'assets', 'icon.ico')
+  ];
+  const iconPath = iconCandidates.find(p => fs.existsSync(p));
+  const iconExists = !!iconPath;
+
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 750,
@@ -631,6 +697,7 @@ function createWindow() {
     backgroundColor: '#0a0a0a',
     autoHideMenuBar: true,
     frame: true,
+    icon: iconExists ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -660,13 +727,14 @@ function createWindow() {
     setTimeout(enforceTaskbarOnTop, 100);
   });
 
-  // When the taskbar overlay is active, intercept close → minimize instead of quit.
-  // This keeps the overlay running. User can still quit via the overlay's close button
-  // or by closing the main window when no overlay is active.
+  // When the taskbar overlay is active, intercept close → hide to system tray.
+  // This keeps the overlay running. User can restore from tray or quit via tray menu.
   mainWindow.on('close', (e) => {
     if (!isQuitting && taskbarWindow && !taskbarWindow.isDestroyed()) {
       e.preventDefault();
-      mainWindow.minimize();
+      mainWindow.hide();
+      mainWindowMinimized = true;
+      createTray();
     }
   });
 
@@ -883,6 +951,16 @@ app.whenReady().then(async () => {
     return { success: true };
   });
 
+  ipcMain.handle('get-auto-launch', () => {
+    const settings = app.getLoginItemSettings();
+    return { enabled: settings.openAtLogin };
+  });
+
+  ipcMain.handle('set-auto-launch', (_event, enabled) => {
+    app.setLoginItemSettings({ openAtLogin: enabled });
+    return { enabled };
+  });
+
   ipcMain.handle('toggle-always-on-top', () => {
     mainWindowPinned = !mainWindowPinned;
     mainWindow.setAlwaysOnTop(mainWindowPinned, 'floating');
@@ -902,6 +980,7 @@ app.on('before-quit', () => {
   isQuitting = true;
   stopAlwaysOnTopEnforcer();
   stopVirtualDesktopWatcher();
+  destroyTray();
 });
 
 app.on('window-all-closed', () => {

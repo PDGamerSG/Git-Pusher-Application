@@ -14,6 +14,30 @@ export default function SettingsModal({ apiKey, apiStatus, onSave, onClose, onIn
   const [testResult, setTestResult] = useState(null);
   const [installingBand, setInstallingBand] = useState(false);
   const [bandResult, setBandResult] = useState(null);
+  const [autoLaunch, setAutoLaunch] = useState(false);
+  const [autoLaunchLoading, setAutoLaunchLoading] = useState(true);
+
+  // Load auto-launch state on mount
+  React.useEffect(() => {
+    if (!window.electronAPI?.getAutoLaunch) {
+      setAutoLaunchLoading(false);
+      return;
+    }
+    window.electronAPI.getAutoLaunch().then(result => {
+      setAutoLaunch(result.enabled);
+    }).catch(() => {}).finally(() => setAutoLaunchLoading(false));
+  }, []);
+
+  const handleAutoLaunchToggle = async () => {
+    if (!window.electronAPI?.setAutoLaunch) return;
+    const newValue = !autoLaunch;
+    setAutoLaunch(newValue);
+    try {
+      await window.electronAPI.setAutoLaunch(newValue);
+    } catch {
+      setAutoLaunch(!newValue); // revert on failure
+    }
+  };
 
   const detected = detectProviderLocal(key.trim());
 
@@ -176,6 +200,28 @@ export default function SettingsModal({ apiKey, apiStatus, onSave, onClose, onIn
                 )}
               </div>
             )}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-neutral-800">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] text-neutral-300 font-semibold">Launch on startup</p>
+                <p className="text-[10px] text-neutral-600 mt-0.5">
+                  Automatically start Git Pusher when you log in to Windows.
+                </p>
+              </div>
+              <button
+                onClick={handleAutoLaunchToggle}
+                disabled={autoLaunchLoading}
+                className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
+                  autoLaunch ? 'bg-emerald-600' : 'bg-neutral-700'
+                } ${autoLaunchLoading ? 'opacity-40' : 'cursor-pointer'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                  autoLaunch ? 'translate-x-4' : 'translate-x-0'
+                }`} />
+              </button>
+            </div>
           </div>
         </div>
 

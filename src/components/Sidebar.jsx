@@ -145,16 +145,9 @@ export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, on
 
   return (
     <div className="w-[280px] flex-shrink-0 bg-[#111111] border-r border-neutral-800 flex flex-col h-full select-none">
-      {/* Sidebar header */}
+      {/* Projects header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/60">
-        <div className="flex items-center gap-2">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-emerald-500">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 3v3M12 18v3M3 12h3M18 12h3" strokeLinecap="round"/>
-            <path d="M5.636 5.636l2.121 2.121M16.243 16.243l2.121 2.121M5.636 18.364l2.121-2.121M16.243 7.757l2.121-2.121" strokeLinecap="round"/>
-          </svg>
-          <span className="text-[13px] font-bold text-white tracking-tight">Git Pusher</span>
-        </div>
+        <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">Projects</span>
         <button
           onClick={onSettingsOpen}
           className="relative p-1.5 text-neutral-500 hover:text-white hover:bg-neutral-800 rounded transition-colors"

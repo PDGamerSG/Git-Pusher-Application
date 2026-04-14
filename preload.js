@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('taskbar-closed', handler);
     return () => ipcRenderer.removeListener('taskbar-closed', handler);
   },
+  getAutoLaunch: () => ipcRenderer.invoke('get-auto-launch'),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke('set-auto-launch', enabled),
   toggleAlwaysOnTop: () => ipcRenderer.invoke('toggle-always-on-top'),
   setTaskbarDirection: (dir) => ipcRenderer.invoke('taskbar-set-direction', dir),
   onTaskbarAutoOpened: (callback) => {
