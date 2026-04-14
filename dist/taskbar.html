@@ -17,7 +17,6 @@
       height: 100%;
     }
 
-    /* Direction: up = bar at bottom, down = bar at top */
     body {
       display: flex;
       flex-direction: column;
@@ -30,13 +29,13 @@
     .bar {
       display: flex;
       align-items: center;
-      height: 48px;
-      min-height: 48px;
-      padding: 0 10px;
-      gap: 8px;
+      height: 38px;
+      min-height: 38px;
+      padding: 0 8px;
+      gap: 6px;
       background: #111;
       border: 1px solid #2a2a2a;
-      border-radius: 10px;
+      border-radius: 0;
       position: relative;
       flex-shrink: 0;
     }
@@ -45,28 +44,27 @@
     .drag-handle {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       flex-shrink: 0;
       cursor: grab;
-      padding: 4px 2px;
+      padding: 3px 2px;
     }
     .drag-handle:active { cursor: grabbing; }
     .drag-handle svg { opacity: 0.3; flex-shrink: 0; }
 
-    .logo { width: 16px; height: 16px; flex-shrink: 0; }
+    .logo { width: 14px; height: 14px; flex-shrink: 0; }
 
     /* Project selector */
     .project-btn {
-
       background: #1a1a1a;
       border: 1px solid #333;
-      border-radius: 6px;
+      border-radius: 4px;
       color: #10b981;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
-      padding: 4px 10px;
+      padding: 3px 8px;
       cursor: pointer;
-      max-width: 140px;
+      max-width: 100px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -75,31 +73,29 @@
     }
     .project-btn:hover { border-color: #10b981; }
 
-    /* Dropdown: hidden by default, shown with .open */
+    /* Dropdown */
     .dropdown {
       display: none;
       position: absolute;
-      left: 10px;
+      left: 8px;
       background: #1a1a1a;
       border: 1px solid #333;
-      border-radius: 8px;
-      min-width: 180px;
-      max-height: 200px;
+      border-radius: 4px;
+      min-width: 160px;
+      max-height: 180px;
       overflow-y: auto;
       z-index: 100;
-      padding: 4px;
+      padding: 3px;
     }
     .dropdown.open { display: block; }
 
-    /* Upward (default): dropdown above bar */
     body:not(.dir-down) .dropdown {
-      bottom: 50px;
+      bottom: 40px;
       top: auto;
       box-shadow: 0 -4px 20px rgba(0,0,0,0.6);
     }
-    /* Downward: dropdown below bar */
     body.dir-down .dropdown {
-      top: 50px;
+      top: 40px;
       bottom: auto;
       box-shadow: 0 4px 20px rgba(0,0,0,0.6);
     }
@@ -107,29 +103,28 @@
     .dropdown-item {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      font-size: 11px;
+      gap: 5px;
+      padding: 5px 8px;
+      font-size: 10px;
       color: #ccc;
       cursor: pointer;
-      border-radius: 4px;
+      border-radius: 3px;
       transition: background 0.1s;
     }
     .dropdown-item:hover { background: #252525; color: #fff; }
     .dropdown-item.active { color: #10b981; }
-    .dropdown-item .check { width: 12px; font-size: 10px; flex-shrink: 0; }
+    .dropdown-item .check { width: 10px; font-size: 9px; flex-shrink: 0; }
 
     /* Feature input */
     .input-wrap { flex: 1; min-width: 0; }
     .feature-input {
-
       width: 100%;
       background: #0a0a0a;
       border: 1px solid #333;
-      border-radius: 6px;
+      border-radius: 4px;
       color: #fff;
-      font-size: 12px;
-      padding: 5px 10px;
+      font-size: 11px;
+      padding: 4px 8px;
       outline: none;
       transition: border-color 0.2s;
     }
@@ -141,7 +136,7 @@
 
     /* Status dot */
     .status-dot {
-      width: 8px; height: 8px;
+      width: 7px; height: 7px;
       border-radius: 50%;
       flex-shrink: 0;
       background: #555;
@@ -156,49 +151,17 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.4; }
     }
-
-    /* Direction toggle */
-    .direction-btn {
-
-      background: none;
-      border: none;
-      color: #444;
-      font-size: 11px;
-      cursor: pointer;
-      padding: 2px 3px;
-      line-height: 1;
-      flex-shrink: 0;
-      transition: color 0.15s;
-      border-radius: 3px;
-    }
-    .direction-btn:hover { color: #10b981; background: #1a1a1a; }
-
-    /* Close button */
-    .close-btn {
-
-      background: none;
-      border: none;
-      color: #555;
-      font-size: 16px;
-      cursor: pointer;
-      padding: 2px 4px;
-      line-height: 1;
-      flex-shrink: 0;
-      transition: color 0.15s;
-      border-radius: 4px;
-    }
-    .close-btn:hover { color: #ef4444; background: #1a1a1a; }
   </style>
 </head>
 <body>
   <div class="bar">
     <!-- Drag handle -->
     <div class="drag-handle">
-      <svg width="6" height="16" viewBox="0 0 6 16" fill="currentColor">
-        <circle cx="1.5" cy="2" r="1.2"/><circle cx="4.5" cy="2" r="1.2"/>
-        <circle cx="1.5" cy="6" r="1.2"/><circle cx="4.5" cy="6" r="1.2"/>
-        <circle cx="1.5" cy="10" r="1.2"/><circle cx="4.5" cy="10" r="1.2"/>
-        <circle cx="1.5" cy="14" r="1.2"/><circle cx="4.5" cy="14" r="1.2"/>
+      <svg width="6" height="14" viewBox="0 0 6 14" fill="currentColor">
+        <circle cx="1.5" cy="1.5" r="1.1"/><circle cx="4.5" cy="1.5" r="1.1"/>
+        <circle cx="1.5" cy="5" r="1.1"/><circle cx="4.5" cy="5" r="1.1"/>
+        <circle cx="1.5" cy="8.5" r="1.1"/><circle cx="4.5" cy="8.5" r="1.1"/>
+        <circle cx="1.5" cy="12" r="1.1"/><circle cx="4.5" cy="12" r="1.1"/>
       </svg>
       <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.5">
         <circle cx="12" cy="12" r="3"/>
@@ -224,24 +187,16 @@
 
     <!-- Status -->
     <div class="status-dot idle" id="statusDot"></div>
-
-    <!-- Direction toggle -->
-    <button class="direction-btn" id="directionBtn" title="Toggle dropdown direction">▲</button>
-
-    <!-- Close -->
-    <button class="close-btn" id="closeBtn" title="Close">&times;</button>
   </div>
 
   <script>
-    const projectBtn  = document.getElementById('projectBtn');
-    const dropdown    = document.getElementById('dropdown');
+    const projectBtn   = document.getElementById('projectBtn');
+    const dropdown     = document.getElementById('dropdown');
     const featureInput = document.getElementById('featureInput');
-    const statusDot   = document.getElementById('statusDot');
-    const closeBtn    = document.getElementById('closeBtn');
-    const directionBtn = document.getElementById('directionBtn');
+    const statusDot    = document.getElementById('statusDot');
 
-    const WINDOW_HEIGHT = 264;
-    const BAR_HEIGHT    = 48;
+    const WINDOW_HEIGHT = 238;
+    const BAR_HEIGHT    = 38;
 
     let state          = { projects: [], activeProjectId: '', grokApiKey: '' };
     let isPushing      = false;
@@ -249,40 +204,17 @@
     let dropdownOpen   = false;
     let direction      = localStorage.getItem('taskbar-direction') || 'up';
 
-    // ── Direction ────────────────────────────────────────────────────────────
+    // ── Direction (controlled from main app via IPC) ─────────────────────────
     function applyDirection() {
       if (direction === 'down') {
         document.body.classList.add('dir-down');
-        directionBtn.textContent = '▼';
-        directionBtn.title = 'Dropdown opens below — click to open above';
       } else {
         document.body.classList.remove('dir-down');
-        directionBtn.textContent = '▲';
-        directionBtn.title = 'Dropdown opens above — click to open below';
       }
     }
     applyDirection();
 
-    directionBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeDropdown();
-      direction = direction === 'up' ? 'down' : 'up';
-      localStorage.setItem('taskbar-direction', direction);
-      applyDirection();
-    });
-
     // ── Click-through for transparent area ───────────────────────────────────
-    // The window is always 264px; only the 48px bar and open dropdown are interactive.
-    // Everything else is transparent and should pass mouse events to the OS.
-    function updateMouseEvents() {
-      if (dropdownOpen) {
-        window.taskbarAPI.setIgnoreMouseEvents(false);
-        return;
-      }
-      // We can't use e.clientY here so this is called from mousemove
-    }
-
-    // ── Manual drag (no -webkit-app-region so setIgnoreMouseEvents can't break it) ──
     const dragHandle = document.querySelector('.drag-handle');
     let isDragging = false;
 
@@ -297,7 +229,7 @@
     document.addEventListener('mousemove', (e) => {
       if (isDragging) {
         window.taskbarAPI.dragMove({ screenX: e.screenX, screenY: e.screenY });
-        return; // keep events active, skip click-through logic
+        return;
       }
       if (dropdownOpen) {
         window.taskbarAPI.setIgnoreMouseEvents(false);
@@ -439,8 +371,6 @@
       }, 1500);
     }
 
-    closeBtn.addEventListener('click', () => window.taskbarAPI.close());
-
     // ── State ─────────────────────────────────────────────────────────────────
     (async () => {
       try {
@@ -454,6 +384,13 @@
     window.taskbarAPI.onStateUpdate((data) => {
       state = data;
       updateProjectBtn();
+    });
+
+    // Listen for direction changes from main app
+    window.taskbarAPI.onDirectionChanged((dir) => {
+      direction = dir;
+      localStorage.setItem('taskbar-direction', dir);
+      applyDirection();
     });
   </script>
 </body>

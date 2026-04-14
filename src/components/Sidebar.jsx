@@ -129,7 +129,7 @@ function ProjectFolder({ project, isActive, isExpanded, onToggle, onSelect, onRe
   );
 }
 
-export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, onRemove, onSettingsOpen, pushHistory, isPushing, apiStatus, taskbarOpen, onToggleTaskbar, alwaysOnTop, onToggleAlwaysOnTop }) {
+export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, onRemove, onSettingsOpen, pushHistory, isPushing, apiStatus, taskbarOpen, onToggleTaskbar, taskbarDirection, onToggleTaskbarDirection, alwaysOnTop, onToggleAlwaysOnTop }) {
   const [expandedIds, setExpandedIds] = useState(() => {
     return activeProjectId ? new Set([activeProjectId]) : new Set();
   });
@@ -226,8 +226,24 @@ export default function Sidebar({ projects, activeProjectId, onSelect, onAdd, on
               <rect x="3" y="4" width="18" height="12" rx="1.5" />
               <path d="M8 20h8M12 16v4" />
             </svg>
-            <span>{taskbarOpen ? 'Hide taskbar window' : 'Show taskbar window'}</span>
+            <span>{taskbarOpen ? 'Hide taskbar' : 'Show taskbar'}</span>
           </button>
+
+          {taskbarOpen && (
+            <button
+              onClick={onToggleTaskbarDirection}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-[12px] rounded-md transition-colors text-neutral-400 hover:text-white hover:bg-neutral-800/60"
+              title={taskbarDirection === 'up' ? 'Dropdown opens above — click to open below' : 'Dropdown opens below — click to open above'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                {taskbarDirection === 'up'
+                  ? <path d="M12 19V5M5 12l7-7 7 7" />
+                  : <path d="M12 5v14M5 12l7 7 7-7" />
+                }
+              </svg>
+              <span>Dropdown: {taskbarDirection === 'up' ? 'opens above' : 'opens below'}</span>
+            </button>
+          )}
 
           <button
             onClick={onToggleAlwaysOnTop}

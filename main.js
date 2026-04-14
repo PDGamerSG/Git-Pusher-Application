@@ -14,6 +14,12 @@ let virtualDesktopWatcher = null;
 let mainWindowMinimized = false;
 let isQuitting = false;
 let alwaysOnTopEnforcer = null;
+let taskbarPrefs = { x: null, y: null };
+
+const TASKBAR_WIDTH = 340;
+const TASKBAR_HEIGHT = 238;  // bar (38px) + dropdown space (200px)
+const TASKBAR_BAR_HEIGHT = 38;
+
 const DESK_BAND_CLSID = '{A47D7A2A-1F8D-4C79-8DD9-4D9724E4C8F0}';
 const DESK_BAND_NAME = 'GitPusherBand';
 
@@ -43,6 +49,27 @@ function normalizeBandPayload(payload = {}) {
     activeProjectId,
     grokApiKey: typeof payload.grokApiKey === 'string' ? payload.grokApiKey : ''
   };
+}
+
+async function loadTaskbarPrefs() {
+  const prefsPath = path.join(app.getPath('appData'), 'GitPusher', 'taskbar-prefs.json');
+  try {
+    const data = await fs.promises.readFile(prefsPath, 'utf8');
+    const parsed = JSON.parse(data);
+    return {
+      x: typeof parsed.x === 'number' ? parsed.x : null,
+      y: typeof parsed.y === 'number' ? parsed.y : null
+    };
+  } catch {
+    return { x: null, y: null };
+  }
+}
+
+async function saveTaskbarPrefs(prefs) {
+  const dir = path.join(app.getPath('appData'), 'GitPusher');
+  const prefsPath = path.join(dir, 'taskbar-prefs.json');
+  await fs.promises.mkdir(dir, { recursive: true });
+  await fs.promises.writeFile(prefsPath, JSON.stringify(prefs, null, 2), 'utf8');
 }
 
 async function writeBandSharedState(payload = {}) {
@@ -528,7 +555,7 @@ function stopAlwaysOnTopEnforcer() {
   }
 }
 
-function createTaskbarWindow() {
+async function createTaskbarWindow() {
   if (taskbarWindow && !taskbarWindow.isDestroyed()) {
     showTaskbarOnTop(true);
     return;
@@ -536,16 +563,18 @@ function createTaskbarWindow() {
 
   const { screen } = require('electron');
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
+  const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
 
-  const winWidth = 480;
-  const winHeight = 264; // fixed: bar (48px) + dropdown space (200px) + padding
+  taskbarPrefs = await loadTaskbarPrefs();
+
+  // Use saved position if valid, otherwise center horizontally at bottom
+  const x = taskbarPrefs.x != null ? taskbarPrefs.x : Math.round((screenW - TASKBAR_WIDTH) / 2);
+  const y = taskbarPrefs.y != null ? taskbarPrefs.y : screenH - TASKBAR_HEIGHT - 8;
 
   taskbarWindow = new BrowserWindow({
-    width: winWidth,
-    height: winHeight,
-    x: Math.round((width - winWidth) / 2),
-    y: height - winHeight - 8,
+    width: TASKBAR_WIDTH,
+    height: TASKBAR_HEIGHT,
+    x, y,
     frame: false,
     transparent: true,
     resizable: false,
@@ -646,8 +675,15 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow();
+
+  // Auto-open the taskbar overlay on app start
+  await createTaskbarWindow();
+  // Notify the renderer that taskbar is open
+  mainWindow.webContents.once('did-finish-load', () => {
+    mainWindow.webContents.send('taskbar-auto-opened');
+  });
 
   // IPC: folder picker
   ipcMain.handle('select-folder', async () => {
@@ -676,12 +712,12 @@ app.whenReady().then(() => {
   });
 
   // Taskbar mini-window IPC
-  ipcMain.handle('toggle-taskbar-window', () => {
+  ipcMain.handle('toggle-taskbar-window', async () => {
     if (taskbarWindow && !taskbarWindow.isDestroyed()) {
       taskbarWindow.close(); // 'closed' event handles interval cleanup + notify main
       return { visible: false };
     }
-    createTaskbarWindow();
+    await createTaskbarWindow();
     return { visible: true };
   });
 
@@ -818,6 +854,12 @@ app.whenReady().then(() => {
 
   ipcMain.on('taskbar-drag-end', () => {
     taskbarDragOffset = null;
+    // Persist position after drag
+    if (taskbarWindow && !taskbarWindow.isDestroyed()) {
+      const [x, y] = taskbarWindow.getPosition();
+      taskbarPrefs = { ...taskbarPrefs, x, y };
+      saveTaskbarPrefs(taskbarPrefs).catch(() => {});
+    }
   });
 
   // Sync state to taskbar window when main window sends updates
@@ -830,6 +872,13 @@ app.whenReady().then(() => {
     // Forward to taskbar window if open
     if (taskbarWindow && !taskbarWindow.isDestroyed()) {
       taskbarWindow.webContents.send('taskbar-state-update', taskbarState);
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('taskbar-set-direction', (_event, dir) => {
+    if (taskbarWindow && !taskbarWindow.isDestroyed()) {
+      taskbarWindow.webContents.send('taskbar-direction-changed', dir);
     }
     return { success: true };
   });

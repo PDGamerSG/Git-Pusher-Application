@@ -39,5 +39,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('taskbar-closed', handler);
     return () => ipcRenderer.removeListener('taskbar-closed', handler);
   },
-  toggleAlwaysOnTop: () => ipcRenderer.invoke('toggle-always-on-top')
+  toggleAlwaysOnTop: () => ipcRenderer.invoke('toggle-always-on-top'),
+  setTaskbarDirection: (dir) => ipcRenderer.invoke('taskbar-set-direction', dir),
+  onTaskbarAutoOpened: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('taskbar-auto-opened', handler);
+    return () => ipcRenderer.removeListener('taskbar-auto-opened', handler);
+  }
 });

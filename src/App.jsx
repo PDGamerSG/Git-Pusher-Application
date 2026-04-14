@@ -34,8 +34,9 @@ export default function App() {
   const [apiStatus, setApiStatus] = useState(() => loadFromStorage('apiStatus', 'unknown')); // 'unknown' | 'valid' | 'invalid'
   const [gitInitStatus, setGitInitStatus] = useState(null); // null | { initialized, hasRemote }
   const [isInitializing, setIsInitializing] = useState(false);
-  const [taskbarOpen, setTaskbarOpen] = useState(false);
+  const [taskbarOpen, setTaskbarOpen] = useState(true); // auto-opened on app start
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [taskbarDirection, setTaskbarDirection] = useState(() => loadFromStorage('taskbarDirection', 'up'));
 
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
 
@@ -75,13 +76,28 @@ export default function App() {
     return cleanup;
   }, []);
 
-  // Listen for taskbar window being closed (via its X button)
+  // Listen for taskbar window being closed
   useEffect(() => {
     if (!window.electronAPI?.onTaskbarClosed) return;
     return window.electronAPI.onTaskbarClosed(() => {
       setTaskbarOpen(false);
     });
   }, []);
+
+  // Listen for taskbar auto-opened on app start
+  useEffect(() => {
+    if (!window.electronAPI?.onTaskbarAutoOpened) return;
+    return window.electronAPI.onTaskbarAutoOpened(() => {
+      setTaskbarOpen(true);
+    });
+  }, []);
+
+  // Persist and sync taskbar direction
+  useEffect(() => { saveToStorage('taskbarDirection', taskbarDirection); }, [taskbarDirection]);
+  useEffect(() => {
+    if (!window.electronAPI?.setTaskbarDirection) return;
+    window.electronAPI.setTaskbarDirection(taskbarDirection).catch(() => {});
+  }, [taskbarDirection]);
 
   // Always-fresh ref so the taskbar push handler never has stale state
   const stateRef = useRef({});
@@ -333,6 +349,10 @@ export default function App() {
     setTaskbarOpen(result?.visible || false);
   };
 
+  const handleToggleTaskbarDirection = () => {
+    setTaskbarDirection(prev => prev === 'up' ? 'down' : 'up');
+  };
+
   const handleToggleAlwaysOnTop = async () => {
     if (!window.electronAPI?.toggleAlwaysOnTop) return;
     const result = await window.electronAPI.toggleAlwaysOnTop();
@@ -366,6 +386,8 @@ export default function App() {
         apiStatus={apiStatus}
         taskbarOpen={taskbarOpen}
         onToggleTaskbar={handleToggleTaskbar}
+        taskbarDirection={taskbarDirection}
+        onToggleTaskbarDirection={handleToggleTaskbarDirection}
         alwaysOnTop={alwaysOnTop}
         onToggleAlwaysOnTop={handleToggleAlwaysOnTop}
       />

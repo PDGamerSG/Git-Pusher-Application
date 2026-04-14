@@ -14,5 +14,10 @@ contextBridge.exposeInMainWorld('taskbarAPI', {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('taskbar-state-update', handler);
     return () => ipcRenderer.removeListener('taskbar-state-update', handler);
+  },
+  onDirectionChanged: (callback) => {
+    const handler = (_event, dir) => callback(dir);
+    ipcRenderer.on('taskbar-direction-changed', handler);
+    return () => ipcRenderer.removeListener('taskbar-direction-changed', handler);
   }
 });
