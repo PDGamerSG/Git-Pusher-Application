@@ -609,7 +609,6 @@ async function createTaskbarWindow() {
   taskbarWindow.on('closed', () => {
     stopAlwaysOnTopEnforcer();
     stopVirtualDesktopWatcher();
-    destroyTray();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('taskbar-closed');
       // If main window was hidden to tray while taskbar was open, restore it
@@ -621,23 +620,13 @@ async function createTaskbarWindow() {
       }
     }
     taskbarWindow = null;
+    refreshTrayMenu();
   });
 }
 
-function createTray() {
-  if (tray && !tray.isDestroyed()) return;
-
-  const iconCandidates = [
-    path.join(__dirname, 'assets', 'icon.ico'),
-    path.join(process.resourcesPath || '', 'assets', 'icon.ico')
-  ];
-  const iconPath = iconCandidates.find(p => fs.existsSync(p));
-  const trayIcon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
-
-  tray = new Tray(trayIcon);
-  tray.setToolTip('Git Pusher');
-
-  const contextMenu = Menu.buildFromTemplate([
+function buildTrayMenu() {
+  const taskbarOpen = !!(taskbarWindow && !taskbarWindow.isDestroyed());
+  return Menu.buildFromTemplate([
     {
       label: 'Show Window',
       click: () => {
@@ -646,7 +635,17 @@ function createTray() {
           mainWindow.focus();
           mainWindowMinimized = false;
         }
-        destroyTray();
+      }
+    },
+    {
+      label: taskbarOpen ? 'Disable Top Bar' : 'Enable Top Bar',
+      click: async () => {
+        if (taskbarOpen) {
+          taskbarWindow.close();
+        } else {
+          await createTaskbarWindow();
+        }
+        refreshTrayMenu();
       }
     },
     { type: 'separator' },
@@ -658,8 +657,30 @@ function createTray() {
       }
     }
   ]);
+}
 
-  tray.setContextMenu(contextMenu);
+function refreshTrayMenu() {
+  if (tray && !tray.isDestroyed()) {
+    tray.setContextMenu(buildTrayMenu());
+  }
+}
+
+function createTray() {
+  if (tray && !tray.isDestroyed()) {
+    refreshTrayMenu();
+    return;
+  }
+
+  const iconCandidates = [
+    path.join(__dirname, 'assets', 'icon.ico'),
+    path.join(process.resourcesPath || '', 'assets', 'icon.ico')
+  ];
+  const iconPath = iconCandidates.find(p => fs.existsSync(p));
+  const trayIcon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Git Pusher');
+  tray.setContextMenu(buildTrayMenu());
 
   tray.on('double-click', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -667,7 +688,6 @@ function createTray() {
       mainWindow.focus();
       mainWindowMinimized = false;
     }
-    destroyTray();
   });
 }
 
@@ -745,9 +765,11 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   createWindow();
+  createTray();
 
   // Auto-open the taskbar overlay on app start
   await createTaskbarWindow();
+  refreshTrayMenu();
   // Notify the renderer that taskbar is open
   mainWindow.webContents.once('did-finish-load', () => {
     mainWindow.webContents.send('taskbar-auto-opened');
@@ -786,6 +808,7 @@ app.whenReady().then(async () => {
       return { visible: false };
     }
     await createTaskbarWindow();
+    refreshTrayMenu();
     return { visible: true };
   });
 
