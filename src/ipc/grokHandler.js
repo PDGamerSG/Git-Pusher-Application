@@ -8,11 +8,11 @@ const PROVIDERS = [
     name: 'Groq',
     baseURL: 'https://api.groq.com/openai/v1',
     models: [
-      'llama-3.3-70b-versatile',
       'openai/gpt-oss-120b',
-      'moonshotai/kimi-k2-instruct-0905',
-      'meta-llama/llama-4-maverick-17b-128e-instruct',
-      'meta-llama/llama-4-scout-17b-16e-instruct',
+      'openai/gpt-oss-20b',
+      'qwen/qwen3.6-27b',
+      'groq/compound-mini',
+      'llama-3.3-70b-versatile',
       'llama-3.1-8b-instant'
     ]
   },
@@ -34,7 +34,15 @@ const PROVIDERS = [
 const FALLBACK_PROVIDER = { ...PROVIDERS[0], name: 'Unknown (trying Groq)' };
 
 // Models exposed by these APIs that cannot serve chat completions.
-const NON_CHAT = /whisper|tts|embed|moderation|guard|playai|rerank|image|dall-e/i;
+const NON_CHAT = /whisper|tts|embed|moderation|guard|playai|orpheus|canopylabs|rerank|image|dall-e/i;
+
+// Reasoning models need room to think before they emit any answer. A tight
+// budget spends every token on reasoning and returns empty content, and a
+// merely small one truncates mid-thought. Commit messages are one line, so the
+// ceiling only ever costs us on models that think out loud.
+const MAX_TOKENS = 1024;
+
+const CONVENTIONAL = /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?!?:\s?.+/i;
 
 // Cache resolved model per API key + provider, for this process only.
 const modelCache = new Map();
@@ -89,21 +97,54 @@ async function resolveModels(client, provider, apiKey) {
 }
 
 /**
- * Run a chat completion, walking the candidate list whenever a model turns out
- * to be missing or decommissioned for this key.
+ * Some models return their chain of thought inline in the message content
+ * wrapped in <think> tags, and some wrap the answer in a code fence. Strip both
+ * so only the answer is left.
  */
-async function chatWithFallback(client, provider, apiKey, params) {
+function cleanCompletion(raw) {
+  if (!raw) return '';
+  return raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think>[\s\S]*$/i, '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .trim();
+}
+
+/** Reduce a completion to a single commit message line. */
+function pickCommitLine(raw) {
+  const lines = cleanCompletion(raw)
+    .split('\n')
+    .map((line) => line.trim().replace(/^["'`]|["'`]$/g, '').trim())
+    .filter(Boolean);
+
+  return lines.find((line) => CONVENTIONAL.test(line)) || lines[0] || '';
+}
+
+/**
+ * Run a chat completion, walking the candidate list whenever a model turns out
+ * to be missing, decommissioned, or unable to produce usable content for this
+ * key. `extract` turns a response into the value we want; returning an empty
+ * string moves on to the next candidate.
+ */
+async function chatWithFallback(client, provider, apiKey, params, extract) {
   const candidates = await resolveModels(client, provider, apiKey);
+  const cacheKey = `${provider.baseURL}|${apiKey.trim().slice(-8)}`;
   let lastErr = null;
 
   for (const model of candidates) {
     try {
-      const response = await client.chat.completions.create({ ...params, model });
-      return { response, model };
+      const response = await client.chat.completions.create({
+        max_tokens: MAX_TOKENS,
+        ...params,
+        model
+      });
+      const value = extract(response);
+      if (value) return { value, model };
+      lastErr = new Error(`Model ${model} returned no usable content.`);
     } catch (err) {
       lastErr = err;
       if (!isModelError(err)) throw err;
-      modelCache.delete(`${provider.baseURL}|${apiKey.trim().slice(-8)}`);
+      modelCache.delete(cacheKey);
     }
   }
 
@@ -126,16 +167,21 @@ async function generateCommitMessage({ diff, featureName, apiKey }) {
 
   try {
     const client = makeClient(apiKey, provider);
-    const { response } = await chatWithFallback(client, provider, apiKey, {
-      messages: [
-        { role: 'system', content: COMMIT_SYSTEM_PROMPT },
-        { role: 'user', content: `Feature: ${featureName}\n\nDiff stat:\n${diff}` }
-      ],
-      temperature: 0.3
-    });
+    const { value } = await chatWithFallback(
+      client,
+      provider,
+      apiKey,
+      {
+        messages: [
+          { role: 'system', content: COMMIT_SYSTEM_PROMPT },
+          { role: 'user', content: `Feature: ${featureName}\n\nDiff stat:\n${diff}` }
+        ],
+        temperature: 0.3
+      },
+      (response) => pickCommitLine(response.choices[0]?.message?.content)
+    );
 
-    const message = response.choices[0].message.content.trim();
-    return { message, error: null };
+    return { message: value, error: null };
   } catch (err) {
     const errorMsg = err?.error?.message || err?.message || String(err);
     return { message: null, error: `[${provider.name}] ${errorMsg}` };
@@ -164,16 +210,15 @@ function registerGrokHandler(ipcMain) {
 
     try {
       const client = makeClient(apiKey, provider);
-      const { response, model } = await chatWithFallback(client, provider, apiKey, {
-        messages: [{ role: 'user', content: 'Say "ok" and nothing else.' }],
-        max_tokens: 5
-      });
+      const { model } = await chatWithFallback(
+        client,
+        provider,
+        apiKey,
+        { messages: [{ role: 'user', content: 'Say "ok" and nothing else.' }] },
+        (response) => cleanCompletion(response.choices[0]?.message?.content)
+      );
 
-      const text = response.choices[0]?.message?.content?.trim();
-      if (text) {
-        return { success: true, error: null, provider: provider.name, model };
-      }
-      return { success: false, error: 'Empty response from API.', provider: provider.name };
+      return { success: true, error: null, provider: provider.name, model };
     } catch (err) {
       const errorMsg = err?.error?.message || err?.message || String(err);
       return { success: false, error: errorMsg, provider: provider.name };

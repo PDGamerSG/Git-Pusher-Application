@@ -55,7 +55,7 @@ Paste an API key from any supported provider. The prefix auto-detects the provid
 
 | Prefix  | Provider   | Preferred model         |
 |---------|------------|-------------------------|
-| `gsk_`  | Groq       | llama-3.3-70b-versatile |
+| `gsk_`  | Groq       | openai/gpt-oss-120b     |
 | `xai-`  | Grok (xAI) | grok-3-mini             |
 | `sk-`   | OpenAI     | gpt-4o-mini             |
 
