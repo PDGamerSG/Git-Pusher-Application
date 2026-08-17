@@ -1,6 +1,6 @@
 {
   "name": "git-pusher",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Smart Git commit/push assistant with AI-generated commit messages",
   "author": "PDGamerSG",
   "main": "main.js",

@@ -53,13 +53,17 @@ Open **Settings** (gear icon in the sidebar) to configure:
 
 Paste an API key from any supported provider. The prefix auto-detects the provider:
 
-| Prefix  | Provider   | Model                  |
-|---------|------------|------------------------|
+| Prefix  | Provider   | Preferred model         |
+|---------|------------|-------------------------|
 | `gsk_`  | Groq       | llama-3.3-70b-versatile |
-| `xai-`  | Grok (xAI) | grok-3-mini            |
-| `sk-`   | OpenAI     | gpt-4o-mini            |
+| `xai-`  | Grok (xAI) | grok-3-mini             |
+| `sk-`   | OpenAI     | gpt-4o-mini             |
 
-Use the **Test** button to verify connectivity before saving.
+The preferred model is only a starting point. On each new key the app lists the
+models that key can actually reach and picks the best available one, so a model
+that has been decommissioned or is not enabled on your account falls back
+automatically instead of failing. The **Test** button reports the model it
+settled on.
 
 ### Launch on startup
 

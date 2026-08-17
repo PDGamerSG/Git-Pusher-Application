@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { registerGitHandlers } = require('./src/ipc/gitHandlers');
-const { registerGrokHandler } = require('./src/ipc/grokHandler');
+const { registerGrokHandler, generateCommitMessage } = require('./src/ipc/grokHandler');
 
 let mainWindow;
 let taskbarWindow = null;
@@ -863,27 +863,10 @@ app.whenReady().then(async () => {
       const diffStat = status.files.map(f => `${f.working_dir || f.index} ${f.path}`).join('\n');
 
       // 2. Generate commit message
-      const OpenAI = require('openai');
-      function getProvider(key) {
-        if (key.startsWith('gsk_')) return { name: 'Groq', baseURL: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' };
-        if (key.startsWith('xai-')) return { name: 'Grok (xAI)', baseURL: 'https://api.x.ai/v1', model: 'grok-3-mini' };
-        if (key.startsWith('sk-')) return { name: 'OpenAI', baseURL: 'https://api.openai.com/v1', model: 'gpt-4o-mini' };
-        return { name: 'Groq', baseURL: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' };
-      }
-
       let commitMessage = `feat: ${featureName}`;
       if (apiKey && apiKey.trim()) {
-        const provider = getProvider(apiKey.trim());
-        const client = new OpenAI({ apiKey: apiKey.trim(), baseURL: provider.baseURL });
-        const response = await client.chat.completions.create({
-          model: provider.model,
-          messages: [
-            { role: 'system', content: 'You are a Git commit message generator. Given a short feature description and a git diff stat, return ONLY a single conventional commit message. No explanation, no quotes, just the commit message string.' },
-            { role: 'user', content: `Feature: ${featureName}\n\nDiff stat:\n${diffStat}` }
-          ],
-          temperature: 0.3
-        });
-        commitMessage = response.choices[0].message.content.trim();
+        const generated = await generateCommitMessage({ diff: diffStat, featureName, apiKey });
+        if (generated.message) commitMessage = generated.message;
       }
 
       // 3. Add, commit, push
